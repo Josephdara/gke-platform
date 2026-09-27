@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "platform-verification-api"
+version = "0.1.0"
+description = "HTTP workload for verifying the GKE application platform"
+requires-python = ">=3.12"
+dependencies = ["fastapi==0.141.1", "uvicorn==0.54.0"]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1", "httpx==0.28.1"]
+
+[project.scripts]
+platform-verification-api = "platform_verification_api.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"

@@ -1,0 +1,6 @@
+
+**
+!requirements.txt
+!src/
+!src/platform_verification_api/
+!src/platform_verification_api/*.py

@@ -64,7 +64,7 @@ Mounted files refresh every two minutes, and applications reread updated values.
 
 ## Application services
 
-Both services use Go’s standard HTTP library. The first returns service/version JSON and calls the second through `/backend`; the second returns a greeting and release identity. Each exposes `/livez` for process health and `/readyz` for local initialization and required configuration. Frontend liveness is independent of backend availability.
+The first service, `platform-verification-api`, uses Python with FastAPI and Uvicorn. It returns service/version JSON and exposes `/livez` for process health and `/readyz` for local initialization and required configuration. A later `/backend` integration will call the second service for a greeting and release identity. The second service also exposes health endpoints; its implementation is deferred. API liveness is independent of backend availability.
 
 JSON logs contain timestamp, severity, service, environment, release, request ID, status, and duration. Secret values remain internal to the applications. Network isolation permits frontend-to-backend traffic and denies reverse or unrelated traffic. The second service shares the platform interface, with onboarding limited to service configuration and registration.
 
@@ -157,4 +157,3 @@ Terraform, Git-derived artifacts, and documented bootstrap define cluster recons
 - Demonstrated OCI publication, authentication renewal, and Git-based recovery.
 - Validated capacity, isolation, policies, and acceptance targets.
 - Verified billing notifications, teardown, and retained resources.
-
