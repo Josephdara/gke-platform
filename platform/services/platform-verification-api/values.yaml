@@ -1,0 +1,26 @@
+project: gke-build-proj
+environment: staging
+service: platform-verification-api
+owner: jd
+
+# Placeholders while local testing.
+image:
+  repository: sample-registry.invalid/gke-build-proj/images/platform-verification-api
+  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+releaseVersion: "0.0.0-sample"
+
+containerPort: 8080
+
+probes:
+  liveness:
+    path: /livez
+  readiness:
+    path: /readyz
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
