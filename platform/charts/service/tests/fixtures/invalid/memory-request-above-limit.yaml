@@ -1,0 +1,4 @@
+# expect: resources.requests.memory (512Mi) is above
+resources:
+  requests:
+    memory: 512Mi

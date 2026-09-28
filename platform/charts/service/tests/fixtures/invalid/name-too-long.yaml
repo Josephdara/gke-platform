@@ -1,0 +1,2 @@
+# expect: K8s names allow at most 63
+serviceName: this-service-name-is-deliberately-long-for-testing

@@ -1,6 +1,6 @@
 # Platform Verification API
 
-A small Python HTTP API used to verify the GKE platform's deployment, health, configuration, and logging behavior. FastAPI handles requests; Uvicorn manages the server lifecycle. Container packaging and image scanning follow separately.
+A small Python HTTP API used to verify the GKE platform's deployment, health, configuration, and logging behavior. FastAPI handles requests; Uvicorn manages the server lifecycle. The container image is built from the Dockerfile in this directory; build, scan, and deployment commands are in the repository's root README.
 
 ## Layout
 
@@ -63,11 +63,11 @@ An incoming `X-Request-ID` is accepted if it is a single header containing 1 to 
 
 Request bodies, query strings, and other headers are not logged. URL paths are logged, so secrets must not be placed in paths or request IDs. Unexpected application exceptions produce a generic HTTP 500 response; logs record the exception class without its message. Request logs use INFO for success, WARNING for client errors, and ERROR for server errors. Successful `/livez` and `/readyz` requests, which Kubernetes probes send every few seconds, use DEBUG. A not-ready `/readyz` response (HTTP 503) uses WARNING because it is an expected state rather than a server fault; an unexpected exception in that endpoint still uses ERROR. Higher configured log thresholds suppress lower-severity records, including successful requests and lifecycle events.
 
-## Shutdown and container handoff
+## Shutdown and container runtime
 
 Uvicorn handles SIGTERM and SIGINT, stops accepting connections, and allows active requests to complete. The graceful-shutdown timeout is 20 seconds, leaving headroom within the architecture's 30-second Kubernetes termination period. Application cleanup clears readiness and records `application_stopped` after request draining.
 
-The future container needs the runtime dependencies, source package, required environment variables, and the same server entry point. Signals must reach the Python server process. The application writes logs to standard output and has no runtime file-write requirement. Non-root and read-only-filesystem operation, container startup, and image vulnerability scanning remain container-packaging verification tasks.
+The container runs the same server entry point in exec form, so signals reach the Python server process directly. The application writes logs to standard output and needs no writable filesystem. It runs as user `10001` with a read-only root filesystem, no capabilities, and no privilege escalation; this was verified in Docker and on Docker Desktop Kubernetes. pip is removed from the runtime image after dependencies are installed, and the image passes the Trivy gate for fixable HIGH and CRITICAL vulnerabilities.
 
 ## Verification
 
@@ -80,4 +80,4 @@ Tests cover service identity, readiness/liveness separation, configuration defau
 
 The POSIX process test starts the production server configuration with a test-only slow route, waits until a request is in flight, sends SIGTERM, and checks that the request completes and the server exits promptly. The slow route exists only in the test harness. A sandbox that denies localhost binding causes an explicit skip rather than a successful shutdown claim.
 
-Initial verification: 39 tests passed and one process test was skipped because the sandbox denied local socket binding. Actual server startup and SIGTERM draining therefore remain unverified in this environment. Starlette also emits a deprecation warning for its HTTPX-backed test client; the current tests pass with the pinned dependencies.
+Current verification: 44 tests pass, including the process tests that start the real server and confirm SIGTERM draining. Those tests are skipped only where binding a local socket is denied. Starlette also emits a deprecation warning for its HTTPX-backed test client; the current tests pass with the pinned dependencies.

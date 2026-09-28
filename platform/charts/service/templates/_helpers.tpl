@@ -33,3 +33,16 @@ app.kubernetes.io/instance: {{ include "service.fullname" . | quote }}
 {{- define "service.serviceAccountName" -}}
 {{- include "service.fullname" . -}}
 {{- end -}}
+
+{{/*
+Requests must not exceed limits. The schema restricts units to m and Mi, so the numbers compare directly.
+*/}}
+{{- define "service.validateResources" -}}
+{{- $r := .Values.resources -}}
+{{- if gt (trimSuffix "m" $r.requests.cpu | atoi) (trimSuffix "m" $r.limits.cpu | atoi) -}}
+{{- fail (printf "resources.requests.cpu (%s) is above resources.limits.cpu (%s). Lower the request or raise the limit." $r.requests.cpu $r.limits.cpu) -}}
+{{- end -}}
+{{- if gt (trimSuffix "Mi" $r.requests.memory | atoi) (trimSuffix "Mi" $r.limits.memory | atoi) -}}
+{{- fail (printf "resources.requests.memory (%s) is above resources.limits.memory (%s). Lower the request or raise the limit." $r.requests.memory $r.limits.memory) -}}
+{{- end -}}
+{{- end -}}

@@ -1,0 +1,7 @@
+# Local Docker Desktop overrides, layered after values.yaml.
+environment: local
+
+image:
+  repository: localhost:5001/platform-verification-api
+  digest: "sha256:628d4b71211b016c794f5acf11a2b06cc3fc44c844fccab6c0623649cce5b92b"
+releaseVersion: "local-abd6b2c"

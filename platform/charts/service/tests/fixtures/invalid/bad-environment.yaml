@@ -1,0 +1,2 @@
+# expect: must be one of 'local', 'staging'
+environment: prod

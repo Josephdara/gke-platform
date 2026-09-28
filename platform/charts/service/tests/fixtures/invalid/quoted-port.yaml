@@ -1,0 +1,2 @@
+# expect: got string, want integer
+containerPort: "8080"

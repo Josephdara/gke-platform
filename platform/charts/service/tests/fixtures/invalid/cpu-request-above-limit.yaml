@@ -1,0 +1,4 @@
+# expect: resources.requests.cpu (900m) is above
+resources:
+  requests:
+    cpu: 900m

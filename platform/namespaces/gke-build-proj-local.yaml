@@ -1,0 +1,14 @@
+# Local Docker Desktop namespace. Pod Security admission rejects pods that
+# violate the "restricted" profile, matching the chart's security defaults.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gke-build-proj-local
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+    project: gke-build-proj
+    environment: local
+    owner: jd

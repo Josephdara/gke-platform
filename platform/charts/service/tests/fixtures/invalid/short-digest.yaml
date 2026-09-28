@@ -1,0 +1,3 @@
+# expect: /image/digest'
+image:
+  digest: "sha256:abc"

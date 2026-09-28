@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shared service chart values",
+  "description": "Developer interface for deploying one HTTP service. Security, probe timings, rollout, and Service settings are fixed by the chart.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project", "environment", "serviceName", "owner", "image", "releaseVersion", "containerPort", "probes", "resources"],
+  "properties": {
+    "project": {
+      "description": "GCP project ID. First part of resource names and the project label.",
+      "$ref": "#/$defs/dnsLabel"
+    },
+    "environment": {
+      "description": "Deployment environment. Second part of resource names and the namespace.",
+      "enum": ["local", "staging"]
+    },
+    "serviceName": {
+      "description": "Service name. Last part of resource names, the service (cost) label, and SERVICE_NAME.",
+      "$ref": "#/$defs/dnsLabel"
+    },
+    "owner": {
+      "description": "Owning person or team, as a Kubernetes label value.",
+      "$ref": "#/$defs/labelValue"
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "digest"],
+      "properties": {
+        "repository": {
+          "description": "Registry host (optional port) and path, without tag or digest.",
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?(:[0-9]+)?(/[a-z0-9]([-a-z0-9._]*[a-z0-9])?)+$"
+        },
+        "digest": {
+          "description": "Registry manifest digest reported after the image is pushed.",
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "releaseVersion": {
+      "description": "Release identifier, as quoted text. Becomes RELEASE_VERSION and the version label.",
+      "$ref": "#/$defs/labelValue"
+    },
+    "containerPort": {
+      "description": "Port the application listens on. Ports below 1024 need privileges the chart removes.",
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 65535
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["liveness", "readiness"],
+      "properties": {
+        "liveness": { "$ref": "#/$defs/probe", "description": "Liveness and startup probe endpoint." },
+        "readiness": { "$ref": "#/$defs/probe", "description": "Readiness probe endpoint." }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests", "limits"],
+      "properties": {
+        "requests": { "$ref": "#/$defs/computeResources" },
+        "limits": { "$ref": "#/$defs/computeResources" }
+      }
+    },
+    "replicaCount": {
+      "description": "Number of pods. Defaults to 2 in the chart.",
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 3
+    }
+  },
+  "$defs": {
+    "dnsLabel": {
+      "type": "string",
+      "maxLength": 63,
+      "pattern": "^[a-z]([-a-z0-9]*[a-z0-9])?$"
+    },
+    "labelValue": {
+      "type": "string",
+      "maxLength": 63,
+      "pattern": "^[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$"
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^/[^\\s]*$" }
+      }
+    },
+    "computeResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "memory"],
+      "properties": {
+        "cpu": { "description": "Millicores, such as 100m.", "type": "string", "pattern": "^[1-9][0-9]*m$" },
+        "memory": { "description": "Mebibytes, such as 128Mi.", "type": "string", "pattern": "^[1-9][0-9]*Mi$" }
+      }
+    }
+  }
+}
