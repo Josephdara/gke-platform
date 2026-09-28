@@ -6,7 +6,7 @@ metadata:
   labels: 
     {{- include "service.labels" . | nindent 4 }}
 data:
-  SERVICE_NAME: {{ .Values.service | quote }}
+  SERVICE_NAME: {{ .Values.serviceName | quote }}
   ENVIRONMENT: {{ .Values.environment | quote }}
   RELEASE_VERSION: {{ .Values.releaseVersion | quote }}
   APP_PORT: {{ .Values.containerPort | quote }}

@@ -27,12 +27,16 @@ spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
       terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: "RuntimeDefault"
       containers:
-        - name: {{ .Values.service }}
+        - name: {{ .Values.serviceName }}
           image: {{ printf "%s@%s" .Values.image.repository .Values.image.digest | quote }}
           imagePullPolicy: IfNotPresent
           ports:
-            - name: http
+            - name: app-http
               containerPort: {{ .Values.containerPort }}
               protocol: TCP
           envFrom:
@@ -48,7 +52,7 @@ spec:
           startupProbe:
             httpGet:
               path: {{ .Values.probes.liveness.path }}
-              port: http
+              port: app-http
             initialDelaySeconds: 0
             periodSeconds: 5
             timeoutSeconds: 2
@@ -57,7 +61,7 @@ spec:
           livenessProbe:
             httpGet:
               path: {{ .Values.probes.liveness.path }}
-              port: http
+              port: app-http
             initialDelaySeconds: 0
             periodSeconds: 5
             timeoutSeconds: 2
@@ -66,12 +70,16 @@ spec:
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.readiness.path }}
-              port: http
+              port: app-http
             initialDelaySeconds: 0
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 3
             successThreshold: 1
-
-
-
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

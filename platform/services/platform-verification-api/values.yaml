@@ -1,6 +1,6 @@
 project: gke-build-proj
 environment: staging
-service: platform-verification-api
+serviceName: platform-verification-api
 owner: jd
 
 # Placeholders while local testing.

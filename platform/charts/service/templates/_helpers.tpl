@@ -1,7 +1,7 @@
 {{- define "service.fullname" -}}
-{{- $name := printf "%s-%s-%s" .Values.project .Values.environment .Values.service -}}
+{{- $name := printf "%s-%s-%s" .Values.project .Values.environment .Values.serviceName -}}
 {{- if gt (len $name) 63 -}}
-{{- fail (printf "project, environment, and service combine to %q (%d characters). K8s names allow at most 63." $name (len $name)) -}}
+{{- fail (printf "project, environment, and serviceName combine to %q (%d characters). K8s names allow at most 63." $name (len $name)) -}}
 {{- end -}}
 {{- $name -}}
 {{- end -}}
@@ -18,7 +18,7 @@
 {{ include "service.selectorLabels" . }}
 project: {{ .Values.project | quote }}
 environment: {{ .Values.environment | quote }}
-service: {{ .Values.service | quote }}
+service: {{ .Values.serviceName | quote }}
 owner: {{ .Values.owner | quote }}
 app.kubernetes.io/version: {{ .Values.releaseVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
@@ -26,7 +26,7 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | 
 {{- end -}}
 
 {{- define "service.selectorLabels" -}}
-app.kubernetes.io/name: {{ .Values.service | quote }}
+app.kubernetes.io/name: {{ .Values.serviceName | quote }}
 app.kubernetes.io/instance: {{ include "service.fullname" . | quote }}
 {{- end -}}
 
