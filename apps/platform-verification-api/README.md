@@ -1,37 +1,45 @@
 # Platform Verification API
 
-A small Python HTTP API used to verify the GKE platform's deployment, health, configuration, and logging behavior. FastAPI handles requests; Uvicorn manages the server lifecycle. This component covers Phase 2 steps 1 through 4. Container packaging and image scanning follow separately.
+A small Python HTTP API used to verify the GKE platform's deployment, health, configuration, and logging behavior. FastAPI handles requests; Uvicorn manages the server lifecycle. Container packaging and image scanning follow separately.
 
 ## Layout
 
-| Module | Responsibility |
-| --- | --- |
-| `src/platform_verification_api/app.py` | Application factory, startup, and shutdown |
-| `src/platform_verification_api/routes.py` | Service identity and health endpoints |
-| `src/platform_verification_api/config.py` | Environment configuration and validation |
-| `src/platform_verification_api/logging.py` | JSON logs and request IDs |
-| `src/platform_verification_api/server.py` | Uvicorn configuration and entry point |
-| `tests/` | Configuration, endpoint, logging, lifecycle, and process tests |
+
+| Module                                     | Responsibility                                                 |
+| ------------------------------------------ | -------------------------------------------------------------- |
+| `src/platform_verification_api/app.py`     | Application factory, startup, and shutdown                     |
+| `src/platform_verification_api/routes.py`  | Service identity and health endpoints                          |
+| `src/platform_verification_api/config.py`  | Environment configuration and validation                       |
+| `src/platform_verification_api/logging.py` | JSON logs and request IDs                                      |
+| `src/platform_verification_api/server.py`  | Uvicorn configuration and entry point                          |
+| `tests/`                                   | Configuration, endpoint, logging, lifecycle, and process tests |
+
+
+
 
 ## HTTP interface
 
-| Endpoint | Response |
-| --- | --- |
-| `GET /` | HTTP 200 with `service` and `version` |
-| `GET /livez` | HTTP 200 with `status: alive` |
+
+| Endpoint      | Response                                                            |
+| ------------- | ------------------------------------------------------------------- |
+| `GET /`       | HTTP 200 with `service` and `version`                               |
+| `GET /livez`  | HTTP 200 with `status: alive`                                       |
 | `GET /readyz` | HTTP 200 with `status: ready`, or HTTP 503 with `status: not_ready` |
+
 
 Readiness becomes true when application startup completes and false during application cleanup. Liveness has no downstream dependencies. Invalid configuration prevents the server from starting rather than leaving a misconfigured process listening. `/backend` and browser documentation endpoints are not implemented.
 
 ## Configuration
 
-| Environment variable | Default | Validation |
-| --- | --- | --- |
-| `SERVICE_NAME` | `platform-verification-api` | Nonempty, without control characters |
-| `APP_PORT` | `8080` | Integer from 1 through 65535 |
-| `ENVIRONMENT` | Required | Nonempty, without control characters |
-| `RELEASE_VERSION` | Required | Nonempty, without control characters |
-| `LOG_LEVEL` | `INFO` | DEBUG, INFO, WARNING, ERROR, or CRITICAL; case-insensitive |
+
+| Environment variable | Default                     | Validation                                                 |
+| -------------------- | --------------------------- | ---------------------------------------------------------- |
+| `SERVICE_NAME`       | `platform-verification-api` | Nonempty, without control characters                       |
+| `APP_PORT`           | `8080`                      | Integer from 1 through 65535                               |
+| `ENVIRONMENT`        | Required                    | Nonempty, without control characters                       |
+| `RELEASE_VERSION`    | Required                    | Nonempty, without control characters                       |
+| `LOG_LEVEL`          | `INFO`                      | DEBUG, INFO, WARNING, ERROR, or CRITICAL; case-insensitive |
+
 
 Configuration is read at startup. Invalid settings produce a JSON error on standard error and exit code 2. Error messages identify the field without echoing its value. The release version comes from configuration, independently of the Python package version.
 
