@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "service.fullname" . }}
+  namespace: {{ include "service.namespace" . }}
+  labels: 
+    {{- include "service.labels" . | nindent 4 }}
+data:
+  SERVICE_NAME: {{ .Values.service | quote }}
+  ENVIRONMENT: {{ .Values.environment | quote }}
+  RELEASE_VERSION: {{ .Values.releaseVersion | quote }}
+  APP_PORT: {{ .Values.containerPort | quote }}
+

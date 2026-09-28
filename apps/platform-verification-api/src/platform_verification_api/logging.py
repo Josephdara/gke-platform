@@ -15,6 +15,22 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from .config import Settings
 
 REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+# Kubernetes probes call these every few seconds; successful checks are logged at DEBUG.
+HEALTH_PATHS = frozenset({"/livez", "/readyz"})
+READINESS_PATH = "/readyz"
+
+
+def request_level(path: str, status: int, failed: bool) -> int:
+    if failed:
+        return logging.ERROR
+    if path == READINESS_PATH and status == 503:
+        # Not ready is an expected state, not a server fault.
+        return logging.WARNING
+    if status >= 500:
+        return logging.ERROR
+    if status >= 400:
+        return logging.WARNING
+    return logging.DEBUG if path in HEALTH_PATHS else logging.INFO
 
 
 class JsonFormatter(logging.Formatter):
@@ -102,7 +118,7 @@ class RequestLoggingMiddleware:
                 raise
             await JSONResponse({"detail": "Internal server error"}, status_code=500)(scope, receive, respond)
         finally:
-            level = logging.ERROR if error_type or status >= 500 else logging.WARNING if status >= 400 else logging.INFO
+            level = request_level(scope["path"], status, error_type is not None)
             fields = {
                 "request_id": request_id,
                 "method": scope["method"],

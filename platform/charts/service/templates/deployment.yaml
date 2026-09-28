@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "service.fullname" . }}
+  namespace: {{ include "service.namespace" . }}
+  labels: 
+    {{- include "service.labels" . | nindent 4 }}
+spec: 
+  replicas: {{ .Values.replicaCount}}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "service.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "service.labels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "service.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: {{ .Values.service }}
+          image: {{ printf "%s@%s" .Values.image.repository .Values.image.digest | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "service.fullname" . }}
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu | quote }}
+              memory: {{ .Values.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu | quote }}
+              memory: {{ .Values.resources.limits.memory | quote }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: 0
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: 0
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            initialDelaySeconds: 0
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+
+
+

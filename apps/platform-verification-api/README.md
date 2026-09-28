@@ -53,7 +53,7 @@ Application and Uvicorn logs are JSON lines on standard output. Request logs inc
 
 An incoming `X-Request-ID` is accepted if it is a single header containing 1 to 64 ASCII letters, digits, dots, underscores, or hyphens, starting with a letter or digit. Missing, invalid, or duplicate IDs are replaced with a UUID. Responses and request logs carry the same ID.
 
-Request bodies, query strings, and other headers are not logged. URL paths are logged, so secrets must not be placed in paths or request IDs. Unexpected application exceptions produce a generic HTTP 500 response; logs record the exception class without its message. Request logs use INFO for success, WARNING for client errors, and ERROR for server errors. Higher configured log thresholds suppress lower-severity records, including successful requests and lifecycle events.
+Request bodies, query strings, and other headers are not logged. URL paths are logged, so secrets must not be placed in paths or request IDs. Unexpected application exceptions produce a generic HTTP 500 response; logs record the exception class without its message. Request logs use INFO for success, WARNING for client errors, and ERROR for server errors. Successful `/livez` and `/readyz` requests, which Kubernetes probes send every few seconds, use DEBUG. A not-ready `/readyz` response (HTTP 503) uses WARNING because it is an expected state rather than a server fault; an unexpected exception in that endpoint still uses ERROR. Higher configured log thresholds suppress lower-severity records, including successful requests and lifecycle events.
 
 ## Shutdown and container handoff
 
