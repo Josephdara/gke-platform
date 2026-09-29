@@ -23,14 +23,14 @@ The platform runs in my personal GCP project `gke-build-proj`, as a temporary st
 ## Current status
 
 
-| Build                                                                                                                            | Status                                                            |
-| -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Architecture and design decisions                                                                                                | Done                                                              |
-| Verification service and shared Helm chart                                                                                       | In progress                                                       |
-| GCP foundation: Terraform, GKE, Artifact Registry, IAM, budget controls                                                          | Planned. The GCP project exists; no infrastructure is provisioned |
-| Image build pipeline: Cloud Build, recorded digests                                                                              | Planned                                                           |
-| GitOps deployment: Argo CD, OCI bundles                                                                                          | Planned                                                           |
-| Identity and isolation, admission policies, validation suite, second service, observability and costs, acceptance tests, handoff | Planned                                                           |
+| Build                                                                                                                            | Status      |
+| -------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| Architecture and design decisions                                                                                                | Done        |
+| Verification service and shared Helm chart                                                                                       | Done        |
+| GCP foundation: Terraform, GKE, Artifact Registry, IAM, budget controls                                                          | In Progress |
+| Image build pipeline: Cloud Build, recorded digests                                                                              | Planned     |
+| GitOps deployment: Argo CD, OCI bundles                                                                                          | Planned     |
+| Identity and isolation, admission policies, validation suite, second service, observability and costs, acceptance tests, handoff | Planned     |
 
 
 **Service and chart, done:**
@@ -65,14 +65,14 @@ The image repository and digest in `values-staging.yaml` are placeholders (`samp
 These versions were used to build and test the current state:
 
 
-| Tool    | Version |
-| ------- | ------- |
-| Python  | 3.14.6  |
-| Helm    | 4.3.0   |
-| kubectl | 1.37.0  |
-| Docker  | 29.8.0  |
-| Trivy   | 0.74.0  |
-| kubeconform | 0.8.0 |
+| Tool        | Version |
+| ----------- | ------- |
+| Python      | 3.14.6  |
+| Helm        | 4.3.0   |
+| kubectl     | 1.37.0  |
+| Docker      | 29.8.0  |
+| Trivy       | 0.74.0  |
+| kubeconform | 0.8.0   |
 
 
 
@@ -386,13 +386,15 @@ Prerequisites: Helm, kubeconform (`brew install kubeconform`), and the applicati
 
 What it checks:
 
-| Check | Covers |
-| --- | --- |
-| Application tests | The pytest suite in `apps/platform-verification-api/` |
-| Lint and render | Staging (`values.yaml` + `values-staging.yaml`), local (`values.yaml` + `values-local.yaml`), and the second sample service in `platform/charts/service/tests/fixtures/valid/second-service.yaml` |
-| Kubernetes schema | kubeconform in strict mode on each rendered configuration, so unknown or misspelled fields fail |
-| Invalid fixtures | Each file in `platform/charts/service/tests/fixtures/invalid/` is layered on the staging configuration, must fail to render, and must fail with the text on its first line |
-| Built-in failures | Rendering into the wrong namespace, and rendering the shared `values.yaml` alone, must both fail |
+
+| Check             | Covers                                                                                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application tests | The pytest suite in `apps/platform-verification-api/`                                                                                                                                             |
+| Lint and render   | Staging (`values.yaml` + `values-staging.yaml`), local (`values.yaml` + `values-local.yaml`), and the second sample service in `platform/charts/service/tests/fixtures/valid/second-service.yaml` |
+| Kubernetes schema | kubeconform in strict mode on each rendered configuration, so unknown or misspelled fields fail                                                                                                   |
+| Invalid fixtures  | Each file in `platform/charts/service/tests/fixtures/invalid/` is layered on the staging configuration, must fail to render, and must fail with the text on its first line                        |
+| Built-in failures | Rendering into the wrong namespace, and rendering the shared `values.yaml` alone, must both fail                                                                                                  |
+
 
 Exit codes: `0` when every check passes, `1` when a check fails, and `2` when a tool is missing.
 
@@ -405,6 +407,8 @@ A passing run ends with:
 ```text
 27 passed, 0 failed
 ```
+
+
 
 ## Testing the Helm chart
 
@@ -456,7 +460,7 @@ Neither lint nor rendering validates output against the Kubernetes API schema, s
 
 ## Chart inputs
 
-[`platform/charts/service/values.schema.json`](platform/charts/service/values.schema.json) enforces these rules during lint and rendering. The combined name length and requests not above limits are checked by the chart's templates during rendering.
+`[platform/charts/service/values.schema.json](platform/charts/service/values.schema.json)` enforces these rules during lint and rendering. The combined name length and requests not above limits are checked by the chart's templates during rendering.
 
 
 | Key                                                    | Required      | Rule                                                         |
