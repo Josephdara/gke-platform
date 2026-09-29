@@ -10,7 +10,6 @@ APPLY_CLEANUP=false
 for arg in "$@"; do
   case "$arg" in
     --apply-cleanup) APPLY_CLEANUP=true ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "Error: unknown argument '$arg'" >&2; exit 2 ;;
   esac
 done
@@ -74,7 +73,7 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Bootstrap APIs and project labels
+# 3. Bootstrap APIs
 # ------------------------------------------------------------------------------
 step "Enabling bootstrap APIs"
 gcloud services enable \

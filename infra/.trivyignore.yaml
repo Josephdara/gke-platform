@@ -1,0 +1,6 @@
+# Accepted Trivy misconfiguration findings for infra/.
+# Each entry needs the check ID as Trivy prints it, the paths it applies to
+# (relative to infra/, the folder the validation script scans), a statement
+# giving the reason, and an expiry date after which the finding fails again.
+#
+misconfigurations: []
