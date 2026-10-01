@@ -39,9 +39,9 @@ The platform runs in my personal GCP project `gke-build-proj`, as a temporary st
 - API with liveness (`/livez`), readiness (`/readyz`), and identity (`/`) routes, validated configuration, JSON logs with request IDs, graceful shutdown, and tests.
 - Successful health-check requests log at DEBUG; a not-ready `/readyz` response logs at WARNING.
 - Dockerfile with a digest-pinned base image and a numeric non-root user. pip is removed from the runtime image after dependencies are installed.
-- Trivy policy gate passes: no fixable HIGH or CRITICAL vulnerabilities (Trivy 0.74.0, vulnerability database of 2026-09-28).
+- Trivy policy gate passes: no fixable HIGH or CRITICAL vulnerabilities (Trivy 0.74.0).
 - Runtime security verified in Docker and in Kubernetes: user `10001`, read-only root filesystem, no effective capabilities, no privilege escalation, and seccomp filtering active.
-- Local deployment on Docker Desktop Kubernetes from a local registry, into a namespace that enforces the Pod Security "restricted" profile. All checks in [Local deployment on Docker Desktop](platform/README.md#local-deployment-on-docker-desktop) passed on 2026-09-28, as run and reported by the owner.
+- Local deployment on Docker Desktop Kubernetes from a local registry, into a namespace that enforces the Pod Security "restricted" profile. All checks in [Local deployment on Docker Desktop](platform/README.md#local-deployment-on-docker-desktop) , as run and reported by the owner.
 - Shared chart with a ServiceAccount, ConfigMap, Deployment, and ClusterIP Service:
   - Names derived as `<environment>-<serviceName>`, failing above 63 characters.
   - Namespace derived as `<environment>`; rendering fails unless the release namespace matches.

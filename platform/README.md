@@ -13,7 +13,7 @@ Kubernetes configuration for the platform: the shared Helm chart, each service's
 
 ## Local deployment on Docker Desktop
 
-All checks in this section passed on 2026-09-28, as run and reported by the owner. Run from the repository root.
+All checks in this section passed. Run from the repository root.
 
 ### Prerequisites
 
