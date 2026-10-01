@@ -70,9 +70,9 @@ check_valid() {
   fi
 }
 
-check_valid api-staging gke-build-proj-staging -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml"
-check_valid api-local gke-build-proj-local -f "$VALUES/values.yaml" -f "$VALUES/values-local.yaml"
-check_valid second-service gke-build-proj-staging -f "$FIXTURES/valid/second-service.yaml"
+check_valid api-staging staging -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml"
+check_valid api-local local -f "$VALUES/values.yaml" -f "$VALUES/values-local.yaml"
+check_valid second-service staging -f "$FIXTURES/valid/second-service.yaml"
 
 # Invalid configurations must fail, and the error must contain the expected text.
 # Usage: check_invalid <name> <expected text> <helm arguments...>
@@ -95,7 +95,7 @@ for fixture in "$FIXTURES"/invalid/*.yaml; do
     fail "invalid: $name has no '# expect:' first line"
     continue
   fi
-  check_invalid "$name" "$expected" --namespace gke-build-proj-staging \
+  check_invalid "$name" "$expected" --namespace staging \
     -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml" -f "$fixture"
 done
 
@@ -103,7 +103,7 @@ done
 # because Helm otherwise uses the kubeconfig context's namespace.
 check_invalid wrong-namespace "Target namespace mismatch" --namespace default \
   -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml"
-check_invalid shared-values-alone "missing properties" --namespace gke-build-proj-staging \
+check_invalid shared-values-alone "missing properties" --namespace staging \
   -f "$VALUES/values.yaml"
 
 echo

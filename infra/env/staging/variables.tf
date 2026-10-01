@@ -17,6 +17,7 @@ variable "region" {
 variable "lab_enabled" {
   type        = bool
   description = "Create temporary infrastructure for GKE and VPC"
+  default     = false
 }
 variable "service" {
   type    = string

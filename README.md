@@ -2,7 +2,7 @@
 
 A reusable application deployment platform on GKE, built with Terraform, Kubernetes, Argo CD, Helm, Kyverno, Cloud Build, and Docker. Developers deploy a service through a reviewed configuration change, with secure defaults, health checks, and Git-based recovery. The design reference is [architecture.md](architecture.md).
 
-The platform runs in my personal GCP project `gke-build-proj`, as a temporary staging environment with a $100 budget and a 24-hour environment lifecycle. The chart's `project` value matches the project ID, so Kubernetes names (`<project>-<environment>-<service>`) line up with GCP names (`<project>-<environment>-<purpose>`).
+The platform runs in my personal GCP project `gke-build-proj`, as a temporary staging environment with a $100 budget and a 24-hour environment lifecycle. GCP resources are named `<environment>-<purpose>` and Kubernetes resources `<environment>-<service>`, in one namespace per environment named `<environment>`; see [architecture.md](architecture.md#project-structure).
 
 ## Repository layout
 
@@ -15,7 +15,8 @@ The platform runs in my personal GCP project `gke-build-proj`, as a temporary st
 | `[platform/namespaces/](platform/namespaces/)`                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                              |
 | `[platform/tests/](platform/tests/)`                                                           | Chart validation script; its fixtures live in `platform/charts/service/tests/fixtures/`                                                   |
 | `[architecture.md](architecture.md)`                                                           | Architecture and design decisions                                                                                                         |
-| `infra/`, `pipeline/`                                                                          | TBD                                                                                                                                       |
+| `[infra/](infra/)`                                                                             | GCP infrastructure: bootstrap, Terraform root and modules, and validation. See its [README](infra/README.md)                              |
+| `pipeline/`                                                                                    | TBD                                                                                                                                       |
 
 
 
@@ -23,14 +24,14 @@ The platform runs in my personal GCP project `gke-build-proj`, as a temporary st
 ## Current status
 
 
-| Build                                                                                                                            | Status      |
-| -------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| Architecture and design decisions                                                                                                | Done        |
-| Verification service and shared Helm chart                                                                                       | Done        |
-| GCP foundation: Terraform, GKE, Artifact Registry, IAM, budget controls                                                          | In Progress |
-| Image build pipeline: Cloud Build, recorded digests                                                                              | Planned     |
-| GitOps deployment: Argo CD, OCI bundles                                                                                          | Planned     |
-| Identity and isolation, admission policies, validation suite, second service, observability and costs, acceptance tests, handoff | Planned     |
+| Build                                                                                                                            | Status  |
+| -------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Architecture and design decisions                                                                                                | Done    |
+| Verification service and shared Helm chart                                                                                       | Done    |
+| GCP foundation: Terraform, GKE, Artifact Registry, IAM                                                                           | Done    |
+| Image build pipeline: Cloud Build, recorded digests                                                                              | Planned |
+| GitOps deployment: Argo CD from Git                                                                                              | Planned |
+| Identity and isolation, admission policies, validation suite, second service, observability and costs, acceptance tests, handoff | Planned |
 
 
 **Service and chart, done:**
@@ -42,8 +43,8 @@ The platform runs in my personal GCP project `gke-build-proj`, as a temporary st
 - Runtime security verified in Docker and in Kubernetes: user `10001`, read-only root filesystem, no effective capabilities, no privilege escalation, and seccomp filtering active.
 - Local deployment on Docker Desktop Kubernetes from a local registry, into a namespace that enforces the Pod Security "restricted" profile. All checks in [Local deployment on Docker Desktop](platform/README.md#local-deployment-on-docker-desktop) passed on 2026-09-28, as run and reported by the owner.
 - Shared chart with a ServiceAccount, ConfigMap, Deployment, and ClusterIP Service:
-  - Names derived as `<project>-<environment>-<serviceName>`, failing above 63 characters.
-  - Namespace derived as `<project>-<environment>`; rendering fails unless the release namespace matches.
+  - Names derived as `<environment>-<serviceName>`, failing above 63 characters.
+  - Namespace derived as `<environment>`; rendering fails unless the release namespace matches.
   - Nine labels, including the required `project`, `environment`, `service`, and `owner`. Selectors use only `app.kubernetes.io/name` and `app.kubernetes.io/instance`.
   - Image referenced by digest only, with no tag.
   - Startup, liveness, and readiness probes on the named container port `app-http`.
@@ -84,6 +85,8 @@ Testing the Python service and building and running its container image are docu
 - [Testing the Python service](apps/README.md#testing-the-python-service)
 - [Building and running the container image](apps/README.md#building-and-running-the-container-image)
 
+
+
 ## Platform and Helm chart
 
 The Helm chart, its validation, local deployment on Docker Desktop, and the chart's inputs are documented in the [platform README](platform/README.md):
@@ -92,3 +95,4 @@ The Helm chart, its validation, local deployment on Docker Desktop, and the char
 - [Validating the chart](platform/README.md#validating-the-chart)
 - [Testing the Helm chart](platform/README.md#testing-the-helm-chart)
 - [Chart inputs](platform/README.md#chart-inputs)
+

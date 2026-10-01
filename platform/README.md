@@ -80,8 +80,8 @@ After every rebuild, set `image.digest` in `values-local.yaml` to that digest an
 Create the namespace and confirm its Pod Security labels:
 
 ```sh
-kubectl --context docker-desktop apply -f platform/namespaces/gke-build-proj-local.yaml
-kubectl --context docker-desktop get namespace gke-build-proj-local --show-labels
+kubectl --context docker-desktop apply -f platform/namespaces/local.yaml
+kubectl --context docker-desktop get namespace local --show-labels
 ```
 
 Render with both values files; the later file overrides the base. Then run a server-side dry run, which validates against the API schema and admission (including the "restricted" profile) without creating anything. Expect four `(server dry run)` lines and no warnings:
@@ -91,7 +91,7 @@ mkdir -p /tmp/pva-local /tmp/pva-tests
 helm template platform-verification-api platform/charts/service \
   -f platform/services/platform-verification-api/values.yaml \
   -f platform/services/platform-verification-api/values-local.yaml \
-  --namespace gke-build-proj-local > /tmp/pva-local/manifests.yaml
+  --namespace local > /tmp/pva-local/manifests.yaml
 kubectl --context docker-desktop apply --dry-run=server -f /tmp/pva-local/manifests.yaml
 ```
 
@@ -99,8 +99,8 @@ Apply and wait for the rollout:
 
 ```sh
 kubectl --context docker-desktop apply -f /tmp/pva-local/manifests.yaml
-kubectl --context docker-desktop -n gke-build-proj-local rollout status \
-  deployment/gke-build-proj-local-platform-verification-api --timeout=120s
+kubectl --context docker-desktop -n local rollout status \
+  deployment/local-platform-verification-api --timeout=120s
 ```
 
 
@@ -110,22 +110,22 @@ kubectl --context docker-desktop -n gke-build-proj-local rollout status \
 **A. Healthy start.** Two pods at `1/1`, no restarts, and no warning events:
 
 ```sh
-kubectl --context docker-desktop -n gke-build-proj-local get pods -o wide
-kubectl --context docker-desktop -n gke-build-proj-local get events --sort-by=.lastTimestamp
+kubectl --context docker-desktop -n local get pods -o wide
+kubectl --context docker-desktop -n local get events --sort-by=.lastTimestamp
 ```
 
 **B. Runtime security.** Expect `uid=10001(app)`, `Read-only file system` for both writes, `CapEff: 0000000000000000`, `NoNewPrivs: 1`, and `Seccomp: 2`:
 
 ```sh
-kubectl --context docker-desktop -n gke-build-proj-local exec deploy/gke-build-proj-local-platform-verification-api -- id
-kubectl --context docker-desktop -n gke-build-proj-local exec deploy/gke-build-proj-local-platform-verification-api -- sh -c 'touch /app/probe-write; touch /tmp/probe-write'
-kubectl --context docker-desktop -n gke-build-proj-local exec deploy/gke-build-proj-local-platform-verification-api -- grep -E 'CapEff|NoNewPrivs|Seccomp' /proc/1/status
+kubectl --context docker-desktop -n local exec deploy/local-platform-verification-api -- id
+kubectl --context docker-desktop -n local exec deploy/local-platform-verification-api -- sh -c 'touch /app/probe-write; touch /tmp/probe-write'
+kubectl --context docker-desktop -n local exec deploy/local-platform-verification-api -- grep -E 'CapEff|NoNewPrivs|Seccomp' /proc/1/status
 ```
 
 **C. "Restricted" is enforced.** A privileged pod, sent as a server-side dry run, must be refused with `violates PodSecurity "restricted:latest"`:
 
 ```sh
-kubectl --context docker-desktop -n gke-build-proj-local run psa-test --dry-run=server --restart=Never \
+kubectl --context docker-desktop -n local run psa-test --dry-run=server --restart=Never \
   --image=localhost:5001/platform-verification-api:local-$(git log -1 --format=%h -- apps/platform-verification-api) \
   --overrides='{"spec":{"containers":[{"name":"psa-test","image":"busybox","securityContext":{"privileged":true}}]}}'
 ```
@@ -133,8 +133,8 @@ kubectl --context docker-desktop -n gke-build-proj-local run psa-test --dry-run=
 **D. Service routing.** The Service lists two pod IPs, and a one-off client pod that itself meets the "restricted" profile calls the Service by name. Expect `200`, a request ID, and the identity response with the local release:
 
 ```sh
-kubectl --context docker-desktop -n gke-build-proj-local get endpointslices \
-  -l kubernetes.io/service-name=gke-build-proj-local-platform-verification-api
+kubectl --context docker-desktop -n local get endpointslices \
+  -l kubernetes.io/service-name=local-platform-verification-api
 ```
 
 ```sh
@@ -143,7 +143,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: svc-client
-  namespace: gke-build-proj-local
+  namespace: local
 spec:
   restartPolicy: Never
   automountServiceAccountToken: false
@@ -154,7 +154,7 @@ spec:
   containers:
     - name: svc-client
       image: localhost:5001/platform-verification-api:local-$(git log -1 --format=%h -- apps/platform-verification-api)
-      command: ["python", "-c", "import urllib.request as u; r = u.urlopen('http://gke-build-proj-local-platform-verification-api/'); print(r.status, r.headers['x-request-id'], r.read().decode())"]
+      command: ["python", "-c", "import urllib.request as u; r = u.urlopen('http://local-platform-verification-api/'); print(r.status, r.headers['x-request-id'], r.read().decode())"]
       securityContext:
         allowPrivilegeEscalation: false
         readOnlyRootFilesystem: true
@@ -162,31 +162,31 @@ spec:
           drop: ["ALL"]
 EOF
 kubectl --context docker-desktop apply -f /tmp/pva-tests/svc-client.yaml
-kubectl --context docker-desktop -n gke-build-proj-local wait --for=jsonpath='{.status.phase}'=Succeeded pod/svc-client --timeout=60s
-kubectl --context docker-desktop -n gke-build-proj-local logs svc-client
-kubectl --context docker-desktop -n gke-build-proj-local delete pod svc-client
+kubectl --context docker-desktop -n local wait --for=jsonpath='{.status.phase}'=Succeeded pod/svc-client --timeout=60s
+kubectl --context docker-desktop -n local logs svc-client
+kubectl --context docker-desktop -n local delete pod svc-client
 ```
 
 **E. Logs.** JSON lines with `"environment": "local"`, the client's `/` request at INFO with the same request ID, and no health-check requests:
 
 ```sh
-kubectl --context docker-desktop -n gke-build-proj-local logs \
-  -l app.kubernetes.io/instance=gke-build-proj-local-platform-verification-api --prefix --tail=50
+kubectl --context docker-desktop -n local logs \
+  -l app.kubernetes.io/instance=local-platform-verification-api --prefix --tail=50
 ```
 
-**F. Configuration change rolls the pods.** A different release version changes the ConfigMap checksum; the rollout adds one pod before removing an old one, and old pods log `application_stopped`. Follow an old pod's logs in a second terminal before applying (`kubectl --context docker-desktop -n gke-build-proj-local logs -f <pod>`):
+**F. Configuration change rolls the pods.** A different release version changes the ConfigMap checksum; the rollout adds one pod before removing an old one, and old pods log `application_stopped`. Follow an old pod's logs in a second terminal before applying (`kubectl --context docker-desktop -n local logs -f <pod>`):
 
 ```sh
 helm template platform-verification-api platform/charts/service \
   -f platform/services/platform-verification-api/values.yaml \
   -f platform/services/platform-verification-api/values-local.yaml \
-  --namespace gke-build-proj-local \
+  --namespace local \
   --set releaseVersion=local-$(git log -1 --format=%h -- apps/platform-verification-api)-r2 > /tmp/pva-tests/r2.yaml
 grep checksum/config /tmp/pva-local/manifests.yaml /tmp/pva-tests/r2.yaml
 kubectl --context docker-desktop apply -f /tmp/pva-tests/r2.yaml
-kubectl --context docker-desktop -n gke-build-proj-local rollout status \
-  deployment/gke-build-proj-local-platform-verification-api --timeout=120s
-kubectl --context docker-desktop -n gke-build-proj-local get replicasets
+kubectl --context docker-desktop -n local rollout status \
+  deployment/local-platform-verification-api --timeout=120s
+kubectl --context docker-desktop -n local get replicasets
 ```
 
 **G. Wrong readiness path.** The rollout stalls: the new pod stays `0/1`, the old pods keep serving, the Service endpoints do not change, and events show `Readiness probe failed ... 404`. The `rollout status` command is expected to time out:
@@ -195,12 +195,12 @@ kubectl --context docker-desktop -n gke-build-proj-local get replicasets
 helm template platform-verification-api platform/charts/service \
   -f platform/services/platform-verification-api/values.yaml \
   -f platform/services/platform-verification-api/values-local.yaml \
-  --namespace gke-build-proj-local --set probes.readiness.path=/wrong-ready > /tmp/pva-tests/bad-ready.yaml
+  --namespace local --set probes.readiness.path=/wrong-ready > /tmp/pva-tests/bad-ready.yaml
 kubectl --context docker-desktop apply -f /tmp/pva-tests/bad-ready.yaml
-kubectl --context docker-desktop -n gke-build-proj-local rollout status \
-  deployment/gke-build-proj-local-platform-verification-api --timeout=60s
-kubectl --context docker-desktop -n gke-build-proj-local get pods
-kubectl --context docker-desktop -n gke-build-proj-local get events --field-selector reason=Unhealthy
+kubectl --context docker-desktop -n local rollout status \
+  deployment/local-platform-verification-api --timeout=60s
+kubectl --context docker-desktop -n local get pods
+kubectl --context docker-desktop -n local get events --field-selector reason=Unhealthy
 ```
 
 **H. Wrong liveness path.** The startup probe uses the same path, fails after about 30 seconds, and the container restarts towards `CrashLoopBackOff` while the old pods stay `1/1`:
@@ -209,18 +209,18 @@ kubectl --context docker-desktop -n gke-build-proj-local get events --field-sele
 helm template platform-verification-api platform/charts/service \
   -f platform/services/platform-verification-api/values.yaml \
   -f platform/services/platform-verification-api/values-local.yaml \
-  --namespace gke-build-proj-local --set probes.liveness.path=/wrong-live > /tmp/pva-tests/bad-live.yaml
+  --namespace local --set probes.liveness.path=/wrong-live > /tmp/pva-tests/bad-live.yaml
 kubectl --context docker-desktop apply -f /tmp/pva-tests/bad-live.yaml
-kubectl --context docker-desktop -n gke-build-proj-local get pods -w
-kubectl --context docker-desktop -n gke-build-proj-local get events --field-selector reason=Unhealthy
+kubectl --context docker-desktop -n local get pods -w
+kubectl --context docker-desktop -n local get events --field-selector reason=Unhealthy
 ```
 
 After checks F, G, and H, restore the committed configuration:
 
 ```sh
 kubectl --context docker-desktop apply -f /tmp/pva-local/manifests.yaml
-kubectl --context docker-desktop -n gke-build-proj-local rollout status \
-  deployment/gke-build-proj-local-platform-verification-api --timeout=120s
+kubectl --context docker-desktop -n local rollout status \
+  deployment/local-platform-verification-api --timeout=120s
 ```
 
 
@@ -230,7 +230,7 @@ kubectl --context docker-desktop -n gke-build-proj-local rollout status \
 Deleting the namespace removes everything the chart created. Stopping the registry keeps its images for the next session; `docker rm -f local-registry` removes it entirely:
 
 ```sh
-kubectl --context docker-desktop delete namespace gke-build-proj-local
+kubectl --context docker-desktop delete namespace local
 docker stop local-registry
 ```
 
@@ -274,30 +274,30 @@ A passing run ends with:
 
 ## Testing the Helm chart
 
-Run from the repository root. Every render combines the shared `values.yaml` with exactly one environment file; the shared file alone fails schema validation because `environment`, `image`, and `releaseVersion` live in the environment files. The staging commands pass `--namespace gke-build-proj-staging`, because the chart derives the namespace from `project` and `environment` and refuses to render into any other.
+Run from the repository root. Every render combines the shared `values.yaml` with exactly one environment file; the shared file alone fails schema validation because `environment`, `image`, and `releaseVersion` live in the environment files. The staging commands pass `--namespace staging`, because the chart derives the namespace from `project` and `environment` and refuses to render into any other.
 
 Lint the chart:
 
 ```sh
-helm lint platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-staging.yaml --namespace gke-build-proj-staging
+helm lint platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-staging.yaml --namespace staging
 ```
 
 Render all resources (ServiceAccount, ConfigMap, Service, Deployment):
 
 ```sh
-helm template platform-verification-api platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-staging.yaml --namespace gke-build-proj-staging
+helm template platform-verification-api platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-staging.yaml --namespace staging
 ```
 
 Render one template:
 
 ```sh
-helm template platform-verification-api platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-staging.yaml --namespace gke-build-proj-staging --show-only templates/service.yaml
+helm template platform-verification-api platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-staging.yaml --namespace staging --show-only templates/service.yaml
 ```
 
-Render the local configuration. `values-local.yaml` sets `environment: local`, so the derived namespace is `gke-build-proj-local`:
+Render the local configuration. `values-local.yaml` sets `environment: local`, so the derived namespace is `local`:
 
 ```sh
-helm template platform-verification-api platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-local.yaml --namespace gke-build-proj-local
+helm template platform-verification-api platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-local.yaml --namespace local
 ```
 
 Helm 4 lint does not run the chart's `fail` checks, so rendering is the real test. These two commands must fail.
@@ -308,15 +308,15 @@ Missing namespace:
 helm template platform-verification-api platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-staging.yaml
 ```
 
-Expected error: `Target namespace mismatch! Derived namespace is 'gke-build-proj-staging', but release namespace is 'default'.`
+Expected error: `Target namespace mismatch! Derived namespace is 'staging', but release namespace is 'default'.`
 
 Name longer than 63 characters:
 
 ```sh
-helm template platform-verification-api platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-staging.yaml --namespace gke-build-proj-staging --set serviceName=this-service-name-is-deliberately-long-for-testing
+helm template platform-verification-api platform/charts/service -f platform/services/platform-verification-api/values.yaml -f platform/services/platform-verification-api/values-staging.yaml --namespace staging --set serviceName=this-service-name-is-deliberately-long-for-the-name-limit
 ```
 
-Expected error: `project, environment, and serviceName combine to "gke-build-proj-staging-this-service-name-is-deliberately-long-for-testing" (73 characters). K8s names allow at most 63.`
+Expected error: `environment and serviceName combine to "staging-this-service-name-is-deliberately-long-for-the-name-limit" (65 characters). K8s names allow at most 63.`
 
 Neither lint nor rendering validates output against the Kubernetes API schema, so misspelled field names pass these manual commands silently. The [validation script](#validating-the-chart) adds that check.
 
@@ -342,4 +342,4 @@ Neither lint nor rendering validates output against the Kubernetes API schema, s
 | `replicaCount`                                         | No, default 2 | Integer from 2 to 3                                          |
 
 
-`project`, `environment`, and `serviceName` together must produce a name of at most 63 characters. Service images must declare a numeric non-root user, because the chart requires non-root execution without setting a user ID.
+`environment` and `serviceName` together must produce a name of at most 63 characters. Service images must declare a numeric non-root user, because the chart requires non-root execution without setting a user ID.

@@ -1,13 +1,13 @@
 {{- define "service.fullname" -}}
-{{- $name := printf "%s-%s-%s" .Values.project .Values.environment .Values.serviceName -}}
+{{- $name := printf "%s-%s" .Values.environment .Values.serviceName -}}
 {{- if gt (len $name) 63 -}}
-{{- fail (printf "project, environment, and serviceName combine to %q (%d characters). K8s names allow at most 63." $name (len $name)) -}}
+{{- fail (printf "environment and serviceName combine to %q (%d characters). K8s names allow at most 63." $name (len $name)) -}}
 {{- end -}}
 {{- $name -}}
 {{- end -}}
 
 {{- define "service.namespace" -}}
-{{- $namespace := printf "%s-%s" .Values.project .Values.environment -}}
+{{- $namespace := .Values.environment -}}
 {{- if ne $namespace .Release.Namespace}}
     {{- fail (printf "Target namespace mismatch! Derived namespace is '%s', but release namespace is '%s'." $namespace .Release.Namespace) -}}
 {{- end -}}

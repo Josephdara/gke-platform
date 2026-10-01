@@ -3,4 +3,14 @@
 # (relative to infra/, the folder the validation script scans), a statement
 # giving the reason, and an expiry date after which the finding fails again.
 #
-misconfigurations: []
+misconfigurations:
+  - id: GCP-0076
+    paths:
+      - "modules/network/main.tf"
+    statement: "Subnet flow logs are off to avoid logging cost in a temporary lab; revisit in the isolation and observability builds."
+    expired_at: 2027-01-01
+  - id: GCP-0061
+    paths:
+      - "modules/gke/main.tf"
+    statement: "IP-based control plane endpoints are disabled; access is only through the IAM-authorized DNS endpoint, so authorized networks do not apply."
+    expired_at: 2027-01-01

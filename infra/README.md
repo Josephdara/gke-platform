@@ -5,14 +5,17 @@ GCP infrastructure for the platform in project `gke-build-proj`: a manual bootst
 ## Layout
 
 
-| Path                                     | Contents                                                                          |
-| ---------------------------------------- | --------------------------------------------------------------------------------- |
-| `[bootstrap/](bootstrap/)`               | Manual bootstrap script and the retention rule for old Terraform state versions   |
-| `[env/staging/](env/staging/)`           | The Terraform root: version constraints, backend, provider, and variables         |
-| `modules/`                               | Terraform modules for the persistent and lab resources, added as they are written |
-| `[tests/](tests/)`                       | Terraform validation script and its test input                                    |
-| `[.trivyignore.yaml](.trivyignore.yaml)` | Accepted Trivy findings, each with a reason and an expiry date                    |
-| `private/`                               | Saved Terraform plans. Local only and ignored by Git                              |
+| Path                                     | Contents                                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------------------- |
+| `[bootstrap/](bootstrap/)`               | Manual bootstrap script and the retention rule for old Terraform state versions |
+| `[env/staging/](env/staging/)`           | The Terraform root: version constraints, backend, provider, and variables       |
+| `modules/foundation/`                    | Required APIs and the Artifact Registry image repository                        |
+| `modules/identity/`                      | The GKE node service account and its role                                       |
+| `modules/network/`                       | Lab network: VPC, subnet, Cloud Router, and Cloud NAT                           |
+| `modules/gke/`                           | Lab GKE cluster and node pool                                                   |
+| `[tests/](tests/)`                       | Terraform validation script and its test input                                  |
+| `[.trivyignore.yaml](.trivyignore.yaml)` | Accepted Trivy findings, each with a reason and an expiry date                  |
+| `private/`                               | Saved Terraform plans. Local only and ignored by Git                            |
 
 
 
@@ -24,13 +27,27 @@ There is one Terraform root, `[env/staging/](env/staging/)`. Its state lives in 
 Resources have two lifetimes:
 
 
-| Lifetime   | Resources                                                                                                    | Created                                  | Removed                                           |
-| ---------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------- | ------------------------------------------------- |
-| Persistent | Required APIs, the Artifact Registry image repository and its images, node service account | Always | Never by routine work; protected against deletion |
-| Lab | VPC, subnet, Cloud Router and Cloud NAT, GKE cluster, node pool, and any other temporary resource | When a plan sets `lab_enabled` to `true` | When a plan sets `lab_enabled` to `false` |
+| Lifetime   | Resources                                                                                         | Created                                  | Removed                                           |
+| ---------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------- |
+| Persistent | Required APIs, the Artifact Registry image repository and its images, node service account        | Always                                   | Never by routine work; protected against deletion |
+| Lab        | VPC, subnet, Cloud Router and Cloud NAT, GKE cluster, node pool, and any other temporary resource | When a plan sets `lab_enabled` to `true` | When a plan sets `lab_enabled` to `false`         |
 
 
-The root currently manages no resources; the persistent and lab resources are planned. The budget and the billing export, including its dataset, are not managed by Terraform; see [Budget and billing export](#budget-and-billing-export).
+The persistent resources exist at all times; the lab resources exist only during a session.
+
+
+| Resource             | Name                                                                                                                             | Lifetime   |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Required APIs        | Artifact Registry, Compute Engine, Kubernetes Engine, Logging, Monitoring, Secret Manager                                        | Persistent |
+| Image repository     | `gke-build-proj-staging-images` (named before the `<environment>-<purpose>` convention)                                          | Persistent |
+| Node service account | `staging-nodes-sa`, with read access to the image repository                                                                     | Persistent |
+| Network              | `staging-vpc`; subnet `staging-nodes-subnet` (10.40.0.0/24, pods 10.41.0.0/20, services 10.42.0.0/24) with Private Google Access | Lab        |
+| Outbound access      | `staging-router` and `staging-nat`                                                                                               | Lab        |
+| Cluster              | `staging-super-cluster`: zonal in us-east4-b, Regular channel from 1.36, private nodes, DNS endpoint only                        | Lab        |
+| Node pool            | `staging-super-pool`: 2 to 3 e2-standard-2 nodes, 30 GB pd-balanced disks                                                        | Lab        |
+
+
+The budget and the billing export, including its dataset, are not managed by Terraform; see [Budget and billing export](#budget-and-billing-export).
 
 ## Sessions
 
@@ -52,21 +69,25 @@ Review the plan, then apply it:
 terraform -chdir=infra/env/staging apply ../../private/lab-on.tfplan
 ```
 
+Connect through the DNS endpoint. The cluster has no IP endpoints:
+
+```bash
+gcloud container clusters get-credentials staging-super-cluster --zone=us-east4-b --project=gke-build-proj --dns-endpoint
+```
+
+Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `kubectl` and `helm` command. kubectl must be within one minor version of the cluster (1.36).
+
 To end a session:
 
 1. Stop Argo CD from recreating resources, then delete the Kubernetes objects that create cloud resources, such as Gateways, while the cluster still exists. Otherwise their load balancers are left behind.
 2. Plan with the lab off, and check that only lab resources are removed:
-
-   ```bash
+  ```bash
    terraform -chdir=infra/env/staging plan -var=lab_enabled=false -out=../../private/lab-off.tfplan
-   ```
-
+  ```
 3. Apply it:
-
-   ```bash
+  ```bash
    terraform -chdir=infra/env/staging apply ../../private/lab-off.tfplan
-   ```
-
+  ```
 4. Check that no billable lab resources remain.
 
 During a session, plan any other change with `-var=lab_enabled=true`, so the lab stays in place.
@@ -162,6 +183,8 @@ Turn this on before the first lab session, so cost data covers it.
 2. Under Billing, then Billing export, turn on **Detailed usage cost** export to that project and dataset. Google adds its export account as an owner of the dataset automatically.
 3. Data starts arriving within a few hours.
 
+
+
 ## Validation
 
 Run this before every commit:
@@ -177,7 +200,7 @@ It needs Terraform and Trivy, but no cloud credentials. It runs six checks:
 3. Init without the backend, with a read-only lock file. Init fails if the providers no longer match the committed `.terraform.lock.hcl`.
 4. Validate with `lab_enabled` set to `false`.
 5. Validate with `lab_enabled` set to `true`.
-6. Trivy misconfiguration scan of `infra/`, failing on HIGH and CRITICAL findings.
+6. Trivy misconfiguration scan of `infra/`, failing on MEDIUM, HIGH, and CRITICAL findings.
 
 Exit codes: 0 when all checks pass, 1 when a check fails, 2 for a missing tool.
 
@@ -208,12 +231,12 @@ To accept a Trivy finding, add an entry to `[.trivyignore.yaml](.trivyignore.yam
 ## Status
 
 
-| Work                                                                          | Status  |
-| ----------------------------------------------------------------------------- | ------- |
-| Bootstrap                                                                     | Done    |
-| Terraform root and validation                                                 | Done    |
-| Persistent resources: APIs, image repository, node service account | Planned |
-| Budget, billing export dataset, and billing export (console) | Planned |
-| Lab network and cluster                                                       | Planned |
+| Work                                                               | Status              |
+| ------------------------------------------------------------------ | ------------------- |
+| Bootstrap                                                          | Done                |
+| Terraform root and validation                                      | Done                |
+| Persistent resources: APIs, image repository, node service account | Done                |
+| Budget, billing export dataset, and billing export (console)       | Planned             |
+| Lab network and cluster                                            | Created and deleted |
 
 

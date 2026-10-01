@@ -77,16 +77,16 @@ done
 # resources behind the lab_enabled toggle, which the default would skip.
 if trivy config --quiet \
   --misconfig-scanners terraform \
-  --severity HIGH,CRITICAL \
+  --severity HIGH,CRITICAL,MEDIUM \
   --exit-code 1 \
   --ignorefile "$TRIVY_IGNORE" \
   --skip-dirs infra/private \
   --skip-dirs '**/.terraform' \
   --tf-vars "$LAB_ON_VARS" \
   infra > "$WORK/trivy.log" 2>&1; then
-  pass "trivy (HIGH, CRITICAL)"
+  pass "trivy (HIGH, CRITICAL, MEDIUM)"
 else
-  fail "trivy (HIGH, CRITICAL)" "$WORK/trivy.log"
+  fail "trivy (HIGH, CRITICAL, MEDIUM)" "$WORK/trivy.log"
 fi
 
 echo

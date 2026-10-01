@@ -16,7 +16,7 @@ Terraform and Argo CD have separate resource ownership boundaries. GKE controlle
 
 ## Project structure
 
-The project resides in the personal organization’s K8s folder. GCP resource names follow `<project>-<environment>-<purpose>`, except Google service accounts, which follow `<environment>-<service>-sa` because their email already contains the project ID. Kubernetes resource names follow `<project>-<environment>-<service>`. Supported resources carry `project`, `environment`, `service`, and `owner` labels; the project itself carries no labels, so cost grouping relies on resource labels.
+The project resides in the personal organization’s K8s folder. GCP resource names follow `<environment>-<purpose>`, such as `staging-vpc`, because every resource is already scoped to the project; Google service accounts follow `<environment>-<service>-sa`. Names that must be globally unique, such as the Terraform state buckets, keep the `<project>-<environment>-<purpose>` form. Resources created before this convention keep their original names, including the image repository `gke-build-proj-staging-images`. Kubernetes resource names follow `<environment>-<service>`, such as `staging-platform-verification-api`, in one namespace per environment named `<environment>`, such as `staging`. Supported resources carry `project`, `environment`, `service`, and `owner` labels; the project itself carries no labels, so cost grouping relies on resource labels.
 
 ## Region and zones
 
