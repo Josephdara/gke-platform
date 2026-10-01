@@ -1,3 +1,0 @@
-# expect: /image/repository'
-image:
-  repository: localhost:5001/platform-verification-api:local

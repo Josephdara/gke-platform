@@ -1,242 +1,211 @@
 # Infrastructure
 
-GCP infrastructure for the platform in project `gke-build-proj`: a manual bootstrap, then one Terraform root. The design reference is [architecture.md](../architecture.md).
+This is how I set up and run the GCP side of the platform in project `gke-build-proj`: a bootstrap script you run once, then one Terraform root you plan and apply. My design reference is [architecture.md](../architecture.md). Run every command on this page from the repository root.
 
 ## Layout
 
+| Path | Contents |
+| --- | --- |
+| [`bootstrap/`](bootstrap/) | Bootstrap script and the retention rule for old Terraform state versions |
+| [`env/staging/`](env/staging/) | The Terraform root: version constraints, backend, provider, variables, and module calls |
+| [`modules/foundation/`](modules/foundation/) | Required APIs and the Artifact Registry image repository |
+| [`modules/identity/`](modules/identity/) | The GKE node service account and its role |
+| [`modules/network/`](modules/network/) | Lab network: VPC, subnet, Cloud Router, and Cloud NAT |
+| [`modules/gke/`](modules/gke/) | Lab GKE cluster and node pool |
+| [`tests/`](tests/) | Terraform validation script and its test input |
+| [`.trivyignore.yaml`](.trivyignore.yaml) | Accepted Trivy findings, each with a reason and an expiry date |
+| `private/` | Your saved Terraform plans. Git ignores it |
 
-| Path                                     | Contents                                                                        |
-| ---------------------------------------- | ------------------------------------------------------------------------------- |
-| `[bootstrap/](bootstrap/)`               | Manual bootstrap script and the retention rule for old Terraform state versions |
-| `[env/staging/](env/staging/)`           | The Terraform root: version constraints, backend, provider, and variables       |
-| `modules/foundation/`                    | Required APIs and the Artifact Registry image repository                        |
-| `modules/identity/`                      | The GKE node service account and its role                                       |
-| `modules/network/`                       | Lab network: VPC, subnet, Cloud Router, and Cloud NAT                           |
-| `modules/gke/`                           | Lab GKE cluster and node pool                                                   |
-| `[tests/](tests/)`                       | Terraform validation script and its test input                                  |
-| `[.trivyignore.yaml](.trivyignore.yaml)` | Accepted Trivy findings, each with a reason and an expiry date                  |
-| `private/`                               | Saved Terraform plans. Local only and ignored by Git                            |
+## What Terraform manages
 
+I use one Terraform root, [`env/staging/`](env/staging/). Its state lives under the `staging` prefix of the `gke-build-proj-staging-tfstate` bucket. I run Terraform with my own project owner credentials, so you need the same access. A separate deployment account comes with the pipeline.
 
+Persistent resources stay between sessions and are protected against deletion. Lab resources exist only during a session: a plan with `lab_enabled=true` creates them, and a plan with `lab_enabled=false` removes them.
 
+| Resource | Name | Lifetime |
+| --- | --- | --- |
+| Required APIs | Artifact Registry, Compute Engine, Kubernetes Engine, Logging, Monitoring, Secret Manager | Persistent |
+| Image repository | `gke-build-proj-staging-images` (named before the `<environment>-<purpose>` convention) | Persistent |
+| Node service account | `staging-nodes-sa`, with read access to the image repository | Persistent |
+| Network | `staging-vpc`; subnet `staging-nodes-subnet` (10.40.0.0/24, pods 10.41.0.0/20, services 10.42.0.0/24) with Private Google Access | Lab |
+| Outbound access | `staging-router` and `staging-nat` | Lab |
+| Cluster | `staging-super-cluster`: zonal in us-east4-b, Regular channel from 1.36, private nodes, DNS endpoint only | Lab |
+| Node pool | `staging-super-pool`: 2 to 3 e2-standard-2 nodes, 30 GB pd-balanced disks | Lab |
 
-## How the infrastructure is organized
-
-There is one Terraform root, `[env/staging/](env/staging/)`. Its state lives in the `staging` folder of the `gke-build-proj-staging-tfstate` bucket. Terraform runs with the owner's own credentials; a separate deployment account for the pipeline comes later.
-
-Resources have two lifetimes:
-
-
-| Lifetime   | Resources                                                                                         | Created                                  | Removed                                           |
-| ---------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------- |
-| Persistent | Required APIs, the Artifact Registry image repository and its images, node service account        | Always                                   | Never by routine work; protected against deletion |
-| Lab        | VPC, subnet, Cloud Router and Cloud NAT, GKE cluster, node pool, and any other temporary resource | When a plan sets `lab_enabled` to `true` | When a plan sets `lab_enabled` to `false`         |
-
-
-The persistent resources exist at all times; the lab resources exist only during a session.
-
-
-| Resource             | Name                                                                                                                             | Lifetime   |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Required APIs        | Artifact Registry, Compute Engine, Kubernetes Engine, Logging, Monitoring, Secret Manager                                        | Persistent |
-| Image repository     | `gke-build-proj-staging-images` (named before the `<environment>-<purpose>` convention)                                          | Persistent |
-| Node service account | `staging-nodes-sa`, with read access to the image repository                                                                     | Persistent |
-| Network              | `staging-vpc`; subnet `staging-nodes-subnet` (10.40.0.0/24, pods 10.41.0.0/20, services 10.42.0.0/24) with Private Google Access | Lab        |
-| Outbound access      | `staging-router` and `staging-nat`                                                                                               | Lab        |
-| Cluster              | `staging-super-cluster`: zonal in us-east4-b, Regular channel from 1.36, private nodes, DNS endpoint only                        | Lab        |
-| Node pool            | `staging-super-pool`: 2 to 3 e2-standard-2 nodes, 30 GB pd-balanced disks                                                        | Lab        |
-
-
-The budget and the billing export, including its dataset, are not managed by Terraform; see [Budget and billing export](#budget-and-billing-export).
+Terraform does not manage the budget or the billing export; you set those up in the console. See [Budget and billing export](#budget-and-billing-export).
 
 ## Sessions
 
-A lab session lasts at most 24 hours from creation to removal. Always save a plan, review it, and apply that saved plan. A saved plan remembers the value of `lab_enabled`, so `apply` needs no `-var`.
+A session lasts at most 24 hours from creation to removal. For every change, save a plan, review it, and apply that saved plan. The saved plan remembers `lab_enabled`, so `apply` needs no `-var`.
 
-`lab_enabled` has no default, so every plan must set it explicitly. A plan without it stops with `No value for required variable` instead of planning a teardown.
+`lab_enabled` has no default, so set it on every plan. If you leave it out, Terraform stops with `No value for required variable` instead of planning a teardown. During a session, plan any other change with `-var=lab_enabled=true` so the lab stays in place.
 
-Plan paths are relative to `infra/env/staging/` because of `-chdir`, so `../../private/` is `infra/private/`.
+Because of `-chdir`, plan paths are relative to `infra/env/staging/`, so `../../private/` is `infra/private/`.
 
-To start a session, plan with the lab on:
+### Start a session
 
-```bash
-terraform -chdir=infra/env/staging plan -var=lab_enabled=true -out=../../private/lab-on.tfplan
-```
+1. Plan with the lab on, and review the plan:
 
-Review the plan, then apply it:
+   ```bash
+   terraform -chdir=infra/env/staging plan -var=lab_enabled=true -out=../../private/lab-on.tfplan
+   ```
 
-```bash
-terraform -chdir=infra/env/staging apply ../../private/lab-on.tfplan
-```
+2. Apply the saved plan:
 
-Connect through the DNS endpoint. The cluster has no IP endpoints:
+   ```bash
+   terraform -chdir=infra/env/staging apply ../../private/lab-on.tfplan
+   ```
 
-```bash
-gcloud container clusters get-credentials staging-super-cluster --zone=us-east4-b --project=gke-build-proj --dns-endpoint
-```
+3. Get credentials through the DNS endpoint. The cluster has no IP endpoints:
 
-Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `kubectl` and `helm` command. kubectl must be within one minor version of the cluster (1.36).
+   ```bash
+   gcloud container clusters get-credentials staging-super-cluster --zone=us-east4-b --project=gke-build-proj --dns-endpoint
+   ```
 
-To end a session:
+Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `kubectl` and `helm` command. Your kubectl must be within one minor version of the cluster (1.36).
+
+### End a session
 
 1. Stop Argo CD from recreating resources, then delete the Kubernetes objects that create cloud resources, such as Gateways, while the cluster still exists. Otherwise their load balancers are left behind.
-2. Plan with the lab off, and check that only lab resources are removed:
-  ```bash
-   terraform -chdir=infra/env/staging plan -var=lab_enabled=false -out=../../private/lab-off.tfplan
-  ```
-3. Apply it:
-  ```bash
-   terraform -chdir=infra/env/staging apply ../../private/lab-off.tfplan
-  ```
-4. Check that no billable lab resources remain.
+2. Plan with the lab off, and check that it removes only lab resources:
 
-During a session, plan any other change with `-var=lab_enabled=true`, so the lab stays in place.
+   ```bash
+   terraform -chdir=infra/env/staging plan -var=lab_enabled=false -out=../../private/lab-off.tfplan
+   ```
+
+3. Apply the saved plan:
+
+   ```bash
+   terraform -chdir=infra/env/staging apply ../../private/lab-off.tfplan
+   ```
+
+4. Check that no billable lab resources remain.
 
 ## Bootstrap
 
-Terraform needs a few things before it can run: somewhere to store state, a small set of enabled APIs, and credentials. `[bootstrap/init_bootstrap.sh](bootstrap/init_bootstrap.sh)` creates them. Everything else belongs to Terraform, apart from the budget and the billing export, including its dataset.
+Before Terraform can run, it needs somewhere to store state, a few enabled APIs, and credentials. [`bootstrap/init_bootstrap.sh`](bootstrap/init_bootstrap.sh) creates the first two and checks the third. Run it once for a new project; it is safe to rerun.
 
-### Prerequisites
+### Before you run it
 
 - The project exists and is linked to a billing account.
-- gcloud is signed in as the project owner.
-- Application Default Credentials use `gke-build-proj` as the quota project. The script only warns about this; Terraform needs it.
-- `infra/bootstrap/infra.env` exists. It is not in Git; create it with your preferred settings. These are the values used here:
+- gcloud is signed in as a project owner.
+- Your Application Default Credentials use `gke-build-proj` as the quota project. The script only warns about this, but Terraform needs it.
+- `infra/bootstrap/infra.env` exists. Git ignores it, so create it yourself. These are my values:
 
-  | Setting      | Value            |
-  | ------------ | ---------------- |
+  | Setting | Value |
+  | --- | --- |
   | `PROJECT_ID` | `gke-build-proj` |
-  | `ENV`        | `staging`        |
-  | `REGION`     | `us-east4`       |
-  | `SERVICE`    | `platform`       |
-  | `OWNER`      | `jd`             |
-
-
-
+  | `ENV` | `staging` |
+  | `REGION` | `us-east4` |
+  | `SERVICE` | `platform` |
+  | `OWNER` | `jd` |
 
 ### What the script does
 
 1. Checks the active account, the project, that billing is enabled, and the Application Default Credentials quota project.
 2. Enables Service Usage, Cloud Resource Manager, IAM, IAM Service Account Credentials, and Cloud Storage.
-3. If the Compute Engine API is on, lists the `default` network, its firewall rules, and any Editor grant to the Compute Engine default service account. It removes them only when run with `--apply-cleanup`.
+3. If the Compute Engine API is on, lists the `default` network, its firewall rules, and any Editor grant to the Compute Engine default service account. It removes them only when you pass `--apply-cleanup`.
 4. Creates the two state buckets if they are missing, then reapplies every setting.
 5. Prints the project details and each bucket's settings and IAM policy.
 
-It is safe to rerun.
-
 ### State buckets
 
+| Bucket | Holds | Access |
+| --- | --- | --- |
+| `gke-build-proj-staging-tfstate` | State for [`env/staging/`](env/staging/) | Project owners only |
+| `gke-build-proj-staging-identity-tfstate` | Nothing; kept for later use | Project owners only |
 
-| Bucket                                    | Holds                                    | Access              |
-| ----------------------------------------- | ---------------------------------------- | ------------------- |
-| `gke-build-proj-staging-tfstate`          | State for `[env/staging/](env/staging/)` | Project owners only |
-| `gke-build-proj-staging-identity-tfstate` | Nothing; kept for later use              | Project owners only |
-
-
-Both buckets are in `us-east4` with the Standard storage class, uniform bucket-level access, public access prevention, object versioning, and 7-day soft delete. An old state version is deleted once it is more than 30 days old and at least 10 newer versions exist. The automatic grants to project viewers and editors are removed, so project Viewer does not grant read access to state.
+Both buckets are in `us-east4` with the Standard storage class, uniform bucket-level access, public access prevention, object versioning, and 7-day soft delete. An old state version is deleted once it is more than 30 days old and at least 10 newer versions exist. The script removes the automatic grants to project viewers and editors, so project Viewer cannot read state.
 
 ### Running it
 
-List only, without deleting anything:
+Run it first in list-only mode; it deletes nothing:
 
 ```bash
 bash infra/bootstrap/init_bootstrap.sh
 ```
 
-After reviewing the Compute Engine defaults it lists, remove them:
+Review the Compute Engine defaults it lists, then remove them:
 
 ```bash
 bash infra/bootstrap/init_bootstrap.sh --apply-cleanup
 ```
 
-
-
 ## Budget and billing export
 
-The budget and the billing export are set up by hand in the console, not by Terraform, so no billing account ID appears in this repository.
+Set these up by hand in the console. I keep them out of Terraform so no billing account ID appears in this public repository.
 
 ### Budget
 
-First, check the billing account's currency under Billing, then Account management. Then create the budget under Billing, then Budgets & alerts:
+Check the billing account's currency under Billing, then Account management. Then create the budget under Billing, then Budgets & alerts:
 
-
-| Setting                         | Value                                             |
-| ------------------------------- | ------------------------------------------------- |
-| Name                            | `gke-build-proj-staging-budget`                   |
-| Time range                      | Monthly                                           |
-| Projects                        | `gke-build-proj` only                             |
+| Setting | Value |
+| --- | --- |
+| Name | `gke-build-proj-staging-budget` |
+| Time range | Monthly |
+| Projects | `gke-build-proj` only |
 | Savings (credits and discounts) | None selected, so spend is counted before credits |
-| Amount                          | 100 in the billing account's currency             |
-| Alert thresholds                | 30%, 50%, and 99% of actual spend                 |
-| Notifications                   | Email alerts to billing admins and users          |
+| Amount | 100 in the billing account's currency |
+| Alert thresholds | 30%, 50%, and 99% of actual spend |
+| Notifications | Email alerts to billing admins and users |
 
+At the start of each session, check that the budget still exists and belongs to the billing account the project is linked to. If the project moves to another billing account, the old budget stops alerting without any warning.
 
-At the start of each session, check that the budget still exists and belongs to the billing account the project is linked to. If the project is moved to another billing account, the old budget stops alerting without any warning.
-
-The budget only sends alerts; it does not stop spending, and billing data arrives with a delay. Session length, resource limits, and ending each session on time are the real cost controls.
+The budget only sends alerts. It does not stop spending, and billing data arrives with a delay, so your real cost controls are session length, resource limits, and ending each session on time.
 
 ### Billing export
 
-Turn this on before the first lab session, so cost data covers it.
+Turn this on before your first session, so cost data covers it.
 
-1. In BigQuery, create a dataset named `gke_build_proj_staging_billing` in the `US` multi-region. A multi-region dataset receives data from the start of the previous month; a regional dataset only receives data from the day the export is turned on.
+1. In BigQuery, create a dataset named `gke_build_proj_staging_billing` in the `US` multi-region. A multi-region dataset receives data from the start of the previous month; a regional dataset only receives data from the day you turn the export on.
 2. Under Billing, then Billing export, turn on **Detailed usage cost** export to that project and dataset. Google adds its export account as an owner of the dataset automatically.
 3. Data starts arriving within a few hours.
 
-
-
 ## Validation
 
-Run this before every commit:
+Run this before every commit. It needs Terraform and Trivy, but no cloud credentials:
 
 ```bash
 bash infra/tests/validate-terraform.sh
 ```
 
-It needs Terraform and Trivy, but no cloud credentials. It runs six checks:
+It runs six checks:
 
 1. Formatting: `terraform fmt` has nothing to change.
-2. No `terraform.tfvars` or `*.auto.tfvars` anywhere under `infra/`. Every run uses committed values only.
-3. Init without the backend, with a read-only lock file. Init fails if the providers no longer match the committed `.terraform.lock.hcl`.
+2. No `terraform.tfvars` or `*.auto.tfvars` anywhere under `infra/`, so every run uses committed values only.
+3. Init without the backend and with a read-only lock file. Init fails if the providers no longer match the committed `.terraform.lock.hcl`.
 4. Validate with `lab_enabled` set to `false`.
 5. Validate with `lab_enabled` set to `true`.
 6. Trivy misconfiguration scan of `infra/`, failing on MEDIUM, HIGH, and CRITICAL findings.
 
 Exit codes: 0 when all checks pass, 1 when a check fails, 2 for a missing tool.
 
-`[tests/lab-on.tfvars](tests/lab-on.tfvars)` sets `lab_enabled` to `true` for the Trivy scan only, so the resources behind the toggle are scanned with an explicit value rather than depending on how Trivy treats a variable with no default. Terraform never loads the file on its own.
+[`tests/lab-on.tfvars`](tests/lab-on.tfvars) sets `lab_enabled` to `true` for the Trivy scan only, so Trivy scans the resources behind the toggle with an explicit value. Terraform never loads the file on its own.
 
-To accept a Trivy finding, add an entry to `[.trivyignore.yaml](.trivyignore.yaml)` with:
+To accept a Trivy finding, add an entry to [`.trivyignore.yaml`](.trivyignore.yaml) with:
 
 - the check ID as Trivy prints it, for example `GCP-0027`
 - the paths it applies to, relative to `infra/`
 - a statement giving the reason
 - an expiry date, after which the finding fails the check again
 
-
-
 ## Tool versions
 
+I used these versions:
 
-| Tool             | Version        |
-| ---------------- | -------------- |
-| Terraform        | 1.16.4         |
-| Google provider  | 8.5.0 (locked) |
-| Trivy            | 0.74.0         |
-| Google Cloud CLI | 587.0.0        |
-
-
-
+| Tool | Version |
+| --- | --- |
+| Terraform | 1.16.4 |
+| Google provider | 8.5.0 (locked) |
+| Trivy | 0.74.0 |
+| Google Cloud CLI | 587.0.0 |
 
 ## Status
 
-
-| Work                                                               | Status              |
-| ------------------------------------------------------------------ | ------------------- |
-| Bootstrap                                                          | Done                |
-| Terraform root and validation                                      | Done                |
-| Persistent resources: APIs, image repository, node service account | Done                |
-| Budget, billing export dataset, and billing export (console)       | Planned             |
-| Lab network and cluster                                            | Created and deleted |
-
-
+| Work | Status |
+| --- | --- |
+| Bootstrap | Done |
+| Terraform root and validation | Done |
+| Persistent resources: APIs, image repository, node service account | Done |
+| Budget, billing export dataset, and billing export (console) | Planned |
+| Lab network and cluster | Created and deleted |

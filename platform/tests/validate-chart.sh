@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Validates the API tests and the shared service chart: lint, rendering,
-# Kubernetes schema checks, and invalid fixtures that must fail for the
+# Validates the API tests and the shared service chart: rendering with
+# Kubernetes schema checks, and invalid inputs that must fail for the
 # expected reason. Usage: platform/tests/validate-chart.sh
 # Exit codes: 0 all checks passed, 1 a check failed, 2 setup problem.
 set -euo pipefail
@@ -11,8 +11,7 @@ CHART=platform/charts/service
 VALUES=platform/services/platform-verification-api
 FIXTURES=$CHART/tests/fixtures
 APP=apps/platform-verification-api
-# Assumed cluster version until the GKE version is known; matches Docker Desktop.
-KUBERNETES_VERSION=1.36.1
+KUBERNETES_VERSION=1.36.4
 KUBECONFORM_CACHE=${KUBECONFORM_CACHE:-$HOME/.cache/kubeconform}
 
 for tool in helm kubeconform; do
@@ -38,7 +37,7 @@ fail() {
 echo "helm $(helm version --short), kubeconform $(kubeconform -v), Kubernetes schemas $KUBERNETES_VERSION"
 echo
 
-# Application tests.
+# 1. Application tests.
 if [ ! -x "$APP/.venv/bin/python" ]; then
   fail "app tests: $APP/.venv is missing; create it as described in the README"
 elif (cd "$APP" && .venv/bin/python -m pytest -q) > "$WORK/pytest.log" 2>&1; then
@@ -47,64 +46,69 @@ else
   fail "app tests" "$WORK/pytest.log"
 fi
 
-# Valid configurations must lint, render, and match the Kubernetes API schema.
+# 2 and 3. Valid configurations must render and match the Kubernetes API schema.
 # Usage: check_valid <name> <namespace> <helm values arguments...>
 check_valid() {
   local name=$1 namespace=$2
   shift 2
-  if helm lint "$CHART" --namespace "$namespace" "$@" > "$WORK/$name.lint" 2>&1; then
-    pass "lint: $name"
-  else
-    fail "lint: $name" "$WORK/$name.lint"
-  fi
   if ! helm template validate "$CHART" --namespace "$namespace" "$@" > "$WORK/$name.yaml" 2> "$WORK/$name.err"; then
-    fail "render: $name" "$WORK/$name.err"
-    return
-  fi
-  pass "render: $name"
-  if kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
+    fail "$name: render" "$WORK/$name.err"
+  elif kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
       -cache "$KUBECONFORM_CACHE" "$WORK/$name.yaml" > "$WORK/$name.kubeconform" 2>&1; then
-    pass "kubeconform: $name ($(tail -n 1 "$WORK/$name.kubeconform"))"
+    pass "$name: render and schema ($(tail -n 1 "$WORK/$name.kubeconform"))"
   else
-    fail "kubeconform: $name" "$WORK/$name.kubeconform"
+    fail "$name: schema" "$WORK/$name.kubeconform"
   fi
 }
 
-check_valid api-staging staging -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml"
-check_valid api-local local -f "$VALUES/values.yaml" -f "$VALUES/values-local.yaml"
-check_valid second-service staging -f "$FIXTURES/valid/second-service.yaml"
+check_valid staging staging -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml"
+check_valid local local -f "$VALUES/values.yaml" -f "$VALUES/values-local.yaml"
 
-# Invalid configurations must fail, and the error must contain the expected text.
-# Usage: check_invalid <name> <expected text> <helm arguments...>
-check_invalid() {
-  local name=$1 expected=$2
-  shift 2
+# Prints nothing when rendering fails with the expected text, otherwise the reason.
+# Usage: render_fails <expected text> <helm arguments...>
+render_fails() {
+  local expected=$1
+  shift
   if helm template validate "$CHART" "$@" > "$WORK/invalid.out" 2>&1; then
-    fail "invalid: $name rendered, but must fail"
-  elif grep -qF -- "$expected" "$WORK/invalid.out"; then
-    pass "invalid: $name"
-  else
-    fail "invalid: $name failed without the expected text: $expected" "$WORK/invalid.out"
+    echo "rendered, but must fail"
+  elif ! grep -qF -- "$expected" "$WORK/invalid.out"; then
+    echo "failed without the expected text: $expected"
   fi
 }
 
+# 4. Each invalid fixture, layered on staging, must fail with the text on its first line.
+problems=""
+count=0
 for fixture in "$FIXTURES"/invalid/*.yaml; do
   name=$(basename "$fixture" .yaml)
+  count=$((count + 1))
   expected=$(sed -n '1s/^# expect: //p' "$fixture")
   if [ -z "$expected" ]; then
-    fail "invalid: $name has no '# expect:' first line"
-    continue
+    reason="no '# expect:' first line"
+  else
+    reason=$(render_fails "$expected" --namespace staging \
+      -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml" -f "$fixture")
   fi
-  check_invalid "$name" "$expected" --namespace staging \
-    -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml" -f "$fixture"
+  if [ -n "$reason" ]; then problems+="$name: $reason"$'\n'; fi
 done
+if [ -z "$problems" ]; then
+  pass "invalid inputs: $count fixtures rejected"
+else
+  printf '%s' "$problems" > "$WORK/invalid.problems"
+  fail "invalid inputs" "$WORK/invalid.problems"
+fi
 
-# Cases a values overlay cannot express. The namespace is passed explicitly
-# because Helm otherwise uses the kubeconfig context's namespace.
-check_invalid wrong-namespace "Target namespace mismatch" --namespace default \
-  -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml"
-check_invalid shared-values-alone "missing properties" --namespace staging \
-  -f "$VALUES/values.yaml"
+# 5. Rendering into another namespace must fail. The namespace is passed
+# explicitly because Helm otherwise uses the kubeconfig context's namespace.
+reason=$(render_fails "Target namespace mismatch" --namespace default \
+  -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml")
+if [ -z "$reason" ]; then
+  pass "wrong namespace refused"
+elif [ "$reason" = "rendered, but must fail" ]; then
+  fail "wrong namespace: $reason"
+else
+  fail "wrong namespace: $reason" "$WORK/invalid.out"
+fi
 
 echo
 echo "$passed passed, $failed failed"

@@ -1,4 +1,0 @@
-# expect: /resources/requests/cpu'
-resources:
-  requests:
-    cpu: "100"

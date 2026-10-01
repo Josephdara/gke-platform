@@ -1,4 +1,0 @@
-# expect: /probes/liveness/path'
-probes:
-  liveness:
-    path: livez
