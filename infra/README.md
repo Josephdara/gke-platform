@@ -26,15 +26,17 @@ Resources have two lifetimes:
 
 | Lifetime   | Resources                                                                                                    | Created                                  | Removed                                           |
 | ---------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------- | ------------------------------------------------- |
-| Persistent | Required APIs, Artifact Registry repositories and their images, billing export dataset, node service account | Always                                   | Never by routine work; protected against deletion |
-| Lab        | VPC, subnet, GKE cluster, node pool, and any other temporary resource                                        | When a plan sets `lab_enabled` to `true` | When a plan runs without it                       |
+| Persistent | Required APIs, the Artifact Registry image repository and its images, node service account | Always | Never by routine work; protected against deletion |
+| Lab | VPC, subnet, Cloud Router and Cloud NAT, GKE cluster, node pool, and any other temporary resource | When a plan sets `lab_enabled` to `true` | When a plan sets `lab_enabled` to `false` |
 
 
-The root currently manages no resources; the persistent and lab resources are planned. The budget is not managed by Terraform; see [Budget](#budget).
+The root currently manages no resources; the persistent and lab resources are planned. The budget and the billing export, including its dataset, are not managed by Terraform; see [Budget and billing export](#budget-and-billing-export).
 
 ## Sessions
 
 A lab session lasts at most 24 hours from creation to removal. Always save a plan, review it, and apply that saved plan. A saved plan remembers the value of `lab_enabled`, so `apply` needs no `-var`.
+
+`lab_enabled` has no default, so every plan must set it explicitly. A plan without it stops with `No value for required variable` instead of planning a teardown.
 
 Plan paths are relative to `infra/env/staging/` because of `-chdir`, so `../../private/` is `infra/private/`.
 
@@ -52,29 +54,33 @@ terraform -chdir=infra/env/staging apply ../../private/lab-on.tfplan
 
 To end a session:
 
-1. Delete the Kubernetes objects that create cloud resources, such as Gateways, while the cluster still exists. Otherwise their load balancers are left behind.
-2. Plan without the flag, and check that only lab resources are removed:
-  ```bash
-   terraform -chdir=infra/env/staging plan -out=../../private/lab-off.tfplan
-  ```
+1. Stop Argo CD from recreating resources, then delete the Kubernetes objects that create cloud resources, such as Gateways, while the cluster still exists. Otherwise their load balancers are left behind.
+2. Plan with the lab off, and check that only lab resources are removed:
+
+   ```bash
+   terraform -chdir=infra/env/staging plan -var=lab_enabled=false -out=../../private/lab-off.tfplan
+   ```
+
 3. Apply it:
-  ```bash
+
+   ```bash
    terraform -chdir=infra/env/staging apply ../../private/lab-off.tfplan
-  ```
+   ```
+
 4. Check that no billable lab resources remain.
 
-During a session, any plan made without `-var=lab_enabled=true` proposes removing the lab. If a mid-session plan shows that, plan again with the flag.
+During a session, plan any other change with `-var=lab_enabled=true`, so the lab stays in place.
 
 ## Bootstrap
 
-Terraform needs a few things before it can run: somewhere to store state, a small set of enabled APIs, and credentials. `[bootstrap/init_bootstrap.sh](bootstrap/init_bootstrap.sh)` creates them. Everything else belongs to Terraform, apart from the budget and the billing export setting.
+Terraform needs a few things before it can run: somewhere to store state, a small set of enabled APIs, and credentials. `[bootstrap/init_bootstrap.sh](bootstrap/init_bootstrap.sh)` creates them. Everything else belongs to Terraform, apart from the budget and the billing export, including its dataset.
 
 ### Prerequisites
 
 - The project exists and is linked to a billing account.
 - gcloud is signed in as the project owner.
 - Application Default Credentials use `gke-build-proj` as the quota project. The script only warns about this; Terraform needs it.
-- `infra/bootstrap/infra.env` exists. It is not in Git; create it with your preffered settings, i used:
+- `infra/bootstrap/infra.env` exists. It is not in Git; create it with your preferred settings. These are the values used here:
 
   | Setting      | Value            |
   | ------------ | ---------------- |
@@ -124,9 +130,11 @@ bash infra/bootstrap/init_bootstrap.sh --apply-cleanup
 
 
 
-## Budget
+## Budget and billing export
 
-The budget is created by hand in the console, not by Terraform, so no billing account ID appears in this repository.
+The budget and the billing export are set up by hand in the console, not by Terraform, so no billing account ID appears in this repository.
+
+### Budget
 
 First, check the billing account's currency under Billing, then Account management. Then create the budget under Billing, then Budgets & alerts:
 
@@ -143,6 +151,16 @@ First, check the billing account's currency under Billing, then Account manageme
 
 
 At the start of each session, check that the budget still exists and belongs to the billing account the project is linked to. If the project is moved to another billing account, the old budget stops alerting without any warning.
+
+The budget only sends alerts; it does not stop spending, and billing data arrives with a delay. Session length, resource limits, and ending each session on time are the real cost controls.
+
+### Billing export
+
+Turn this on before the first lab session, so cost data covers it.
+
+1. In BigQuery, create a dataset named `gke_build_proj_staging_billing` in the `US` multi-region. A multi-region dataset receives data from the start of the previous month; a regional dataset only receives data from the day the export is turned on.
+2. Under Billing, then Billing export, turn on **Detailed usage cost** export to that project and dataset. Google adds its export account as an owner of the dataset automatically.
+3. Data starts arriving within a few hours.
 
 ## Validation
 
@@ -163,7 +181,7 @@ It needs Terraform and Trivy, but no cloud credentials. It runs six checks:
 
 Exit codes: 0 when all checks pass, 1 when a check fails, 2 for a missing tool.
 
-`[tests/lab-on.tfvars](tests/lab-on.tfvars)` sets `lab_enabled` to `true` for the Trivy scan only. Trivy evaluates variables at their defaults, so without it the resources behind the toggle would never be scanned. Terraform never loads the file on its own.
+`[tests/lab-on.tfvars](tests/lab-on.tfvars)` sets `lab_enabled` to `true` for the Trivy scan only, so the resources behind the toggle are scanned with an explicit value rather than depending on how Trivy treats a variable with no default. Terraform never loads the file on its own.
 
 To accept a Trivy finding, add an entry to `[.trivyignore.yaml](.trivyignore.yaml)` with:
 
@@ -177,12 +195,12 @@ To accept a Trivy finding, add an entry to `[.trivyignore.yaml](.trivyignore.yam
 ## Tool versions
 
 
-| Tool            | Version        |
-| --------------- | -------------- |
-| Terraform       | 1.16.4         |
-| Google provider | 8.5.0 (locked) |
-| Trivy           | 0.74.0         |
-| \               | 587.0.0        |
+| Tool             | Version        |
+| ---------------- | -------------- |
+| Terraform        | 1.16.4         |
+| Google provider  | 8.5.0 (locked) |
+| Trivy            | 0.74.0         |
+| Google Cloud CLI | 587.0.0        |
 
 
 
@@ -194,8 +212,8 @@ To accept a Trivy finding, add an entry to `[.trivyignore.yaml](.trivyignore.yam
 | ----------------------------------------------------------------------------- | ------- |
 | Bootstrap                                                                     | Done    |
 | Terraform root and validation                                                 | Done    |
-| Persistent resources: APIs, registries, billing dataset, node service account | Planned |
-| Budget and billing export (console)                                           | Planned |
+| Persistent resources: APIs, image repository, node service account | Planned |
+| Budget, billing export dataset, and billing export (console) | Planned |
 | Lab network and cluster                                                       | Planned |
 
 

@@ -1,6 +1,6 @@
 # Platform Verification API
 
-A small Python HTTP API used to verify the GKE platform's deployment, health, configuration, and logging behavior. FastAPI handles requests; Uvicorn manages the server lifecycle. The container image is built from the Dockerfile in this directory; build, scan, and deployment commands are in the repository's root README.
+A small Python HTTP API used to verify the GKE platform's deployment, health, configuration, and logging behavior. FastAPI handles requests; Uvicorn manages the server lifecycle. The container image is built from the Dockerfile in this directory; test and build commands are in the [applications README](../README.md), and scanning and deployment are in the [platform README](../../platform/README.md).
 
 ## Layout
 
