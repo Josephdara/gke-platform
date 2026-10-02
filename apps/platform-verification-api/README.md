@@ -37,7 +37,7 @@ The service reads configuration at startup. Invalid settings produce a JSON erro
 
 ## Running from source
 
-I tested with Python 3.14.6. The project metadata allows Python 3.12 and later, but I have not verified other versions. After you create the virtual environment as described in [Testing the Python service](../README.md#testing-the-python-service), run from this directory:
+The image and the pipeline's tests use Python 3.14.8. The project metadata allows Python 3.12 and later, but I have not verified other versions. After you create the virtual environment as described in [Testing the Python service](../README.md#testing-the-python-service), run from this directory:
 
 ```sh
 ENVIRONMENT=local RELEASE_VERSION=dev PYTHONPATH=src .venv/bin/python -m platform_verification_api

@@ -8,8 +8,9 @@ This is how I set up and run the GCP side of the platform in project `gke-build-
 | --- | --- |
 | [`bootstrap/`](bootstrap/) | Bootstrap script and the retention rule for old Terraform state versions |
 | [`env/staging/`](env/staging/) | The Terraform root: version constraints, backend, provider, variables, and module calls |
-| [`modules/foundation/`](modules/foundation/) | Required APIs and the Artifact Registry image repository |
-| [`modules/identity/`](modules/identity/) | The GKE node service account and its role |
+| [`modules/foundation/`](modules/foundation/) | Required APIs, including Cloud Build and Container Analysis, and the Artifact Registry image repository |
+| [`modules/identity/`](modules/identity/) | The GKE node and Cloud Build service accounts and their project roles |
+| [`modules/pipeline/`](modules/pipeline/) | Build evidence bucket, Cloud Build repository link, and the two build triggers |
 | [`modules/network/`](modules/network/) | Lab network: VPC, subnet, Cloud Router, and Cloud NAT |
 | [`modules/gke/`](modules/gke/) | Lab GKE cluster and node pool |
 | [`tests/`](tests/) | Terraform validation script and its test input |
@@ -18,15 +19,18 @@ This is how I set up and run the GCP side of the platform in project `gke-build-
 
 ## What Terraform manages
 
-I use one Terraform root, [`env/staging/`](env/staging/). Its state lives under the `staging` prefix of the `gke-build-proj-staging-tfstate` bucket. I run Terraform with my own project owner credentials, so you need the same access. A separate deployment account comes with the pipeline.
+I use one Terraform root, [`env/staging/`](env/staging/). Its state lives under the `staging` prefix of the `gke-build-proj-staging-tfstate` bucket. I run Terraform with my own project owner credentials, so you need the same access. Terraform CI, with its own deployment account, comes with the validation suite.
 
 Persistent resources stay between sessions and are protected against deletion. Lab resources exist only during a session: a plan with `lab_enabled=true` creates them, and a plan with `lab_enabled=false` removes them.
 
 | Resource | Name | Lifetime |
 | --- | --- | --- |
-| Required APIs | Artifact Registry, Compute Engine, Kubernetes Engine, Logging, Monitoring, Secret Manager | Persistent |
+| Required APIs | Artifact Registry, Compute Engine, Kubernetes Engine, Logging, Monitoring, Secret Manager, Cloud Build, Container Analysis | Persistent |
 | Image repository | `gke-build-proj-staging-images` (named before the `<environment>-<purpose>` convention) | Persistent |
 | Node service account | `staging-nodes-sa`, with read access to the image repository | Persistent |
+| Build service accounts | `staging-build-validate-sa`, which can only write logs; `staging-build-publish-sa`, which can also write to the image repository, and create and list objects in the evidence bucket but not read, overwrite, or delete them | Persistent |
+| Build evidence bucket | `gke-build-proj-staging-build-evidence`: scan reports and SBOMs, deleted after 90 days, protected against deletion | Persistent |
+| Build triggers | Repository link `gke-platform`, and triggers `staging-pr-validate` and `staging-main-publish`; see the [pipeline README](../pipeline/README.md) | Persistent |
 | Network | `staging-vpc`; subnet `staging-nodes-subnet` (10.40.0.0/24, pods 10.41.0.0/20, services 10.42.0.0/24) with Private Google Access | Lab |
 | Outbound access | `staging-router` and `staging-nat` | Lab |
 | Cluster | `staging-super-cluster`: zonal in us-east4-b, Regular channel from 1.36, private nodes, DNS endpoint only | Lab |
@@ -131,6 +135,16 @@ Review the Compute Engine defaults it lists, then remove them:
 bash infra/bootstrap/init_bootstrap.sh --apply-cleanup
 ```
 
+### Cloud Build GitHub connection
+
+Terraform links the repository and creates the triggers, but the connection to GitHub is a manual step, so no GitHub token ever passes through Terraform. Create it once, before the first plan that includes the pipeline module:
+
+1. In the console, open Cloud Build, then Repositories (2nd gen), and create a host connection to GitHub in `us-east4` named `staging-github`.
+2. When GitHub asks, install the Cloud Build app on this repository only, not on all repositories.
+3. Do not link the repository in the console. Terraform does that.
+
+Google stores the connection's token in Secret Manager. Never read it or copy it anywhere.
+
 ## Budget and billing export
 
 Set these up by hand in the console. I keep them out of Terraform so no billing account ID appears in this public repository.
@@ -207,5 +221,6 @@ I used these versions:
 | Bootstrap | Done |
 | Terraform root and validation | Done |
 | Persistent resources: APIs, image repository, node service account | Done |
+| Image pipeline resources and GitHub connection | Done |
 | Budget, billing export dataset, and billing export (console) | Planned |
 | Lab network and cluster | Created and deleted |

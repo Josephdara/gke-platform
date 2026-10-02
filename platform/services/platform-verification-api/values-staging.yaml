@@ -1,8 +1,6 @@
 # Staging overrides, layered after values.yaml.
 environment: staging
 
-# Placeholders until a real image is published. The .invalid host cannot
-# resolve, and the zero digest identifies no real image.
 image:
   repository: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platform-verification-api
   digest: "sha256:21906e77eaa92a5993614ebcdad0fbde788b2d3c5ec9642fd9345434e9186f40"

@@ -21,6 +21,8 @@ All 44 tests pass for me. The process tests start the real server and send it SI
 
 ## Building and running the container image
 
+You don't need to build the image for GKE yourself: merges to `main` that change the API build, scan, and publish it. See the [pipeline README](../pipeline/README.md). The commands below are for trying the image locally.
+
 Run these from the repository root.
 
 Build for GKE, whose nodes are `linux/amd64`. On Apple Silicon this build and the container run under emulation:
