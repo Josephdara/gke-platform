@@ -11,6 +11,8 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | [`namespaces/`](namespaces/) | Local namespace manifest that enforces the Pod Security "restricted" profile |
 | [`tests/`](tests/) | Chart validation script; its fixtures live in `charts/service/tests/fixtures/` |
 
+`values-staging.yaml` holds the digest of an image the pipeline published. Changing it is how you choose what staging runs; see [Promoting an image to staging](../pipeline/README.md#promoting-an-image-to-staging).
+
 ## Local deployment on Docker Desktop
 
 I ran every step in this section on Docker Desktop, and all checks passed.
@@ -53,10 +55,11 @@ docker build --platform linux/arm64 \
   apps/platform-verification-api
 ```
 
-Scan before you publish. Fixable HIGH or CRITICAL vulnerabilities block publication, and the gate exits with code 1 when it finds any. The secret scan must report no findings, and the image user must be `10001:10001`:
+Scan before you publish. Fixable MEDIUM, HIGH, or CRITICAL vulnerabilities block publication, as they do in the pipeline, and the gate exits with code 1 when it finds any. The secret scan must report no findings, and the image user must be `10001:10001`:
 
 ```sh
-trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+trivy image --scanners vuln --severity MEDIUM,HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+  --ignorefile apps/platform-verification-api/.trivyignore.yaml \
   localhost:5001/platform-verification-api:$TAG
 trivy image --scanners secret localhost:5001/platform-verification-api:$TAG
 docker image inspect --format '{{.Config.User}}' localhost:5001/platform-verification-api:$TAG
