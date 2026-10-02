@@ -1,0 +1,38 @@
+steps:
+  - id: test
+    name: python:3.14.8-slim-bookworm@sha256:c8137f4c460908c8763f281c8f22c431eb5c538514ba9553fc3a89c06b7cfb88
+    dir: apps/platform-verification-api
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        python -m venv /workspace/.venv
+        /workspace/.venv/bin/python -m pip install --disable-pip-version-check -r requirements-test.txt
+        /workspace/.venv/bin/python -m pytest
+        /workspace/.venv/bin/python -m pip check
+
+  - id: build
+    name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
+    args: [build, --platform, linux/amd64, -t, "${_IMAGE}:sha-${SHORT_SHA}", apps/platform-verification-api]
+
+  - id: export
+    name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
+    args: [save, -o, /workspace/image.tar, "${_IMAGE}:sha-${SHORT_SHA}"]
+
+  - id: scan
+    name: ghcr.io/aquasecurity/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+    args:
+      - image
+      - --input=/workspace/image.tar
+      - --cache-dir=/workspace/.trivy
+      - --scanners=vuln,secret
+      - --severity=MEDIUM,HIGH,CRITICAL
+      - --ignore-unfixed
+      - --ignorefile=apps/platform-verification-api/.trivyignore.yaml
+      - --exit-code=1
+
+timeout: 1200s
+
+options:
+  logging: CLOUD_LOGGING_ONLY

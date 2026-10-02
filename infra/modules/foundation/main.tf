@@ -6,6 +6,8 @@ locals {
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "secretmanager.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "containeranalysis.googleapis.com"
   ])
 }
 
