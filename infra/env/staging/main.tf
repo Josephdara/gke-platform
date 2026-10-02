@@ -47,8 +47,12 @@ module "pipeline" {
 }
 
 resource "google_storage_bucket_iam_member" "ci_write_evidence" {
+  for_each = toset([
+    "roles/storage.objectCreator",
+    "roles/storage.legacyBucketReader"
+  ])
   bucket = module.pipeline.evidence_bucket_name
-  role   = "roles/storage.objectCreator"
+  role   = each.value
   member = module.identity.ci_build_publish_member
 }
 
