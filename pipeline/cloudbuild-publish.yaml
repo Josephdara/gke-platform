@@ -52,7 +52,7 @@ steps:
       - --cache-dir=/workspace/.trivy
       - --format=cyclonedx
       - --output=/workspace/sbom.cdx.json
-      
+
   - id: evidence
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:587.0.0-slim@sha256:7c2dbc4eeba1e500b788be19cae33599cefe3294949a62c034bd1c2002329f69
     entrypoint: gcloud
@@ -65,16 +65,6 @@ steps:
 
 images:
   - "${_IMAGE}:sha-${SHORT_SHA}"
-
-timeout: 1200s
-
-options:
-  logging: CLOUD_LOGGING_ONLY
-  requestedVerifyOption: VERIFIED
-
-images:
-  - "${_IMAGE}:sha-${SHORT_SHA}"
-
 
 timeout: 1200s
 
