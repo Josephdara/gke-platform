@@ -22,6 +22,36 @@ resource "google_artifact_registry_repository_iam_member" "nodes_read_images" {
   member     = module.identity.node_service_account_member
 }
 
+resource "google_artifact_registry_repository_iam_member" "ci_write_images" {
+  project    = var.project_id
+  location   = var.region
+  repository = module.foundation.images_repository_id
+  role       = "roles/artifactregistry.writer"
+  member     = module.identity.ci_build_publish_member
+
+}
+
+module "pipeline" {
+  source = "../../modules/pipeline"
+
+  project_id                  = var.project_id
+  region                      = var.region
+  environment                 = var.environment
+  name_prefix                 = local.prefix
+  connection_id               = "projects/${var.project_id}/locations/${var.region}/connections/${var.environment}-github"
+  repository_uri              = "https://github.com/Josephdara/gke-platform.git"
+  validate_service_account_id = module.identity.ci_build_validate_id
+  publish_service_account_id  = module.identity.ci_build_publish_id
+  images_repository_id        = module.foundation.images_repository_id
+  labels                      = { component = "pipeline" }
+}
+
+resource "google_storage_bucket_iam_member" "ci_write_evidence" {
+  bucket = module.pipeline.evidence_bucket_name
+  role   = "roles/storage.objectCreator"
+  member = module.identity.ci_build_publish_member
+}
+
 module "network" {
   source = "../../modules/network"
   count  = var.lab_enabled ? 1 : 0

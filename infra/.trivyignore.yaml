@@ -14,3 +14,13 @@ misconfigurations:
       - "modules/gke/main.tf"
     statement: "IP-based control plane endpoints are disabled; access is only through the IAM-authorized DNS endpoint, so authorized networks do not apply."
     expired_at: 2027-01-01
+  - id: GCP-0078
+    paths:
+      - "modules/pipeline/main.tf"
+    statement: "The publish build can only create objects, which cannot overwrite or delete existing ones, so versioning adds no protection; evidence expires after 90 days."
+    expired_at: 2027-01-01
+  - id: GCP-0077
+    paths:
+      - "modules/pipeline/main.tf"
+    statement: "Access logging needs a second bucket and adds cost; only the publish build writes evidence and only the owner reads it. Revisit in the observability build."
+    expired_at: 2027-01-01

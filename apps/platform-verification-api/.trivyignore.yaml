@@ -1,0 +1,4 @@
+# Accepted Trivy vulnerability findings for the platform-verification-api image.
+# Each entry needs the vulnerability ID, a statement giving the reason, and an
+# expiry date after which the finding fails the scan again.
+vulnerabilities: []
