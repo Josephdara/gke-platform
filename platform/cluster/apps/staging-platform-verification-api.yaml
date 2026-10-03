@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: staging-platform-verification-api
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: staging-services
+  source:
+    repoURL: https://github.com/Josephdara/gke-platform.git
+    targetRevision: main
+    path: platform/charts/service
+    helm:
+      releaseName: platform-verification-api
+      valueFiles:
+        - ../../services/platform-verification-api/values.yaml
+        - ../../services/platform-verification-api/values-staging.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
