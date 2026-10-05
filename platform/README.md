@@ -12,7 +12,7 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | [`namespaces/`](namespaces/)                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                |
 | [`tests/`](tests/)                                                           | Chart validation script; its fixtures live in `charts/service/tests/fixtures/`                                              |
 | [`argocd/`](argocd/)                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
-| [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` namespace, the `staging-services` project, and one Application per service |
+| [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` namespace and its guardrails, the `staging-services` project, and one Application per service |
 | [`evidence/`](evidence/)                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results                                     |
 
 
@@ -31,13 +31,27 @@ I install Argo CD 3.5.3 as the **core** install: the application controller, rep
 | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------- |
 | Argo CD and its settings                                                                          | `argocd/kustomization.yaml`, `argocd/namespace.yaml`, `argocd/patches/` | `bootstrap.sh`                          |
 | Root project `platform` and root Application `staging-platform`                                   | `argocd/root/`                                                          | `bootstrap.sh`                          |
-| `staging` namespace (Pod Security "restricted"), `staging-services` project, service Applications | `cluster/`                                                              | The root Application, from `main`       |
+| `staging` namespace (Pod Security "restricted") and its guardrails, `staging-services` project, service Applications | `cluster/`                                                              | The root Application, from `main`       |
 | Each service's Deployment, Service, ConfigMap, ServiceAccount, and SecretProviderClass (when it has secrets) | `charts/service/` with `services/<service>/` values                     | That service's Application, from `main` |
 
 
 The overlay pins the upstream `core-install.yaml` to tag `v3.5.3`, pins every Argo CD and Redis image by digest, adds resource requests, sets the 180-second polling interval, and adds a health check for Applications so the root waits until each service is healthy.
 
-The two projects are guardrails. `platform` may only create Namespaces, AppProjects, and Applications. `staging-services` may only deploy to `staging`, may create no cluster-wide objects, and allows only ServiceAccount, ConfigMap, Service, and Deployment. Argo CD refuses anything else; add a kind here when the chart starts rendering it.
+The two projects are guardrails. `platform` may deploy only to `argocd` and `staging`, and may create only Namespaces, AppProjects, Applications, ResourceQuotas, LimitRanges, NetworkPolicies, Roles, and RoleBindings; `bootstrap.sh` applies it, so a change takes effect at the next bootstrap. `staging-services` may only deploy to `staging`, may create no cluster-wide objects, and allows only ServiceAccount, ConfigMap, Service, Deployment, and SecretProviderClass. Argo CD refuses anything else; add a kind here when the chart starts rendering it.
+
+### Staging guardrails
+
+The root Application applies these to `staging` before any service:
+
+| Object | Effect |
+| --- | --- |
+| ResourceQuota `staging-quota` | At most 1 CPU and 1Gi of requests, 3 CPU and 2Gi of limits, and 10 Pods |
+| LimitRange `staging-limits` | Containers without settings get requests of 50m and 64Mi and limits of 200m and 128Mi; no container may exceed 500m and 256Mi |
+| NetworkPolicy `staging-default-deny` | Blocks all traffic to and from every Pod |
+| NetworkPolicy `staging-allow-dns` | Allows DNS lookups to cluster DNS |
+| Role `staging-developer` and RoleBinding `staging-developers` | Read-only access to Pods, logs, events, Deployments, Services, and ConfigMaps for the group `staging-developers` |
+
+Nothing reaches a service's Pods until a policy opens it. The kubelet's probes still work, because traffic from a Pod's own node is always allowed. Real developer access needs Google Groups for RBAC and the IAM Kubernetes Engine Cluster Viewer role; with Google Groups, the binding's subject becomes the group's email address.
 
 Service Applications sync automatically, revert manual changes in the cluster (self-heal), and delete what is removed from Git (prune). The root also syncs automatically and self-heals, but never prunes, so a mistaken commit cannot delete the `staging` namespace.
 

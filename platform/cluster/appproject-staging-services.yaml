@@ -21,3 +21,5 @@ spec:
       kind: Service
     - group: apps
       kind: Deployment
+    - group: secrets-store.csi.x-k8s.io
+      kind: SecretProviderClass

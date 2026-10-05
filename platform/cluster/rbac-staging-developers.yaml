@@ -1,0 +1,33 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: staging-developer
+  namespace: staging
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: staging-developers
+  namespace: staging
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: staging-developers
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: staging-developer

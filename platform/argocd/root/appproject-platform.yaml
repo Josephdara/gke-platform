@@ -10,6 +10,8 @@ spec:
   destinations:
     - server: https://kubernetes.default.svc
       namespace: argocd
+    - server: https://kubernetes.default.svc
+      namespace: staging
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
@@ -18,3 +20,13 @@ spec:
       kind: AppProject
     - group: argoproj.io
       kind: Application
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding

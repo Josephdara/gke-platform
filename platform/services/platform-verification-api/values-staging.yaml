@@ -3,5 +3,9 @@ environment: staging
 
 image:
   repository: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platform-verification-api
-  digest: "sha256:21906e77eaa92a5993614ebcdad0fbde788b2d3c5ec9642fd9345434e9186f40"
-releaseVersion: "sha-6d18354"
+  digest: "sha256:5eefe9ae99fadc5b0837e468a38acd83bcd386a586b3da85d8a1f011caf60aa3"
+releaseVersion: "sha-4f848fc"
+
+secrets:
+  - name: staging-platform-verification-api-demo
+    env: SECRET_FILE
