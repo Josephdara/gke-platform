@@ -16,6 +16,7 @@ class Settings:
     release_version: str
     port: int = 8080
     log_level: str = "INFO"
+    secret_file: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "Settings":
@@ -45,4 +46,5 @@ class Settings:
             release_version=text("RELEASE_VERSION"),
             port=int(port),
             log_level=log_level,
+            secret_file=None if values.get("SECRET_FILE") is None else text("SECRET_FILE"),
         )

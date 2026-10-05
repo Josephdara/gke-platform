@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from .config import Settings
 from .logging import RequestLoggingMiddleware, create_logger
 from .routes import router
+from .secret import SecretFile
 
 
 def create_app(settings: Settings | None = None, logger: logging.Logger | None = None) -> FastAPI:
@@ -14,6 +15,8 @@ def create_app(settings: Settings | None = None, logger: logging.Logger | None =
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        if app.state.secret is not None:
+            app.state.secret.refresh()
         app.state.ready = True
         logger.info("application_started")
         try:
@@ -26,6 +29,7 @@ def create_app(settings: Settings | None = None, logger: logging.Logger | None =
     app.state.settings = settings
     app.state.ready = False
     app.state.logger = logger
+    app.state.secret = SecretFile(settings.secret_file, logger) if settings.secret_file else None
     app.include_router(router)
     app.add_middleware(RequestLoggingMiddleware, logger=logger)
     return app

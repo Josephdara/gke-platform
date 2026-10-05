@@ -10,6 +10,7 @@ def test_defaults():
     assert settings.service_name == "platform-verification-api"
     assert settings.port == 8080
     assert settings.log_level == "INFO"
+    assert settings.secret_file is None
 
 
 def test_overrides():
@@ -29,7 +30,7 @@ def test_missing_required_fields(field):
         Settings.from_env(env)
 
 
-@pytest.mark.parametrize("field", ["ENVIRONMENT", "RELEASE_VERSION", "SERVICE_NAME"])
+@pytest.mark.parametrize("field", ["ENVIRONMENT", "RELEASE_VERSION", "SERVICE_NAME", "SECRET_FILE"])
 @pytest.mark.parametrize("value", ["", "   ", "text\nvalue"])
 def test_invalid_text(field, value):
     with pytest.raises(ConfigurationError, match=field):
