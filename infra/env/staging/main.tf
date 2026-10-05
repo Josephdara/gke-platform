@@ -31,6 +31,17 @@ resource "google_artifact_registry_repository_iam_member" "ci_write_images" {
 
 }
 
+module "secrets" {
+  source = "../../modules/secrets"
+
+  project_id  = var.project_id
+  environment = var.environment
+  service_secrets = {
+    platform-verification-api = ["demo"]
+  }
+  ungranted_secrets = ["forbidden-demo"]
+}
+
 module "pipeline" {
   source = "../../modules/pipeline"
 
