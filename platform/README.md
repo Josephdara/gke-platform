@@ -7,13 +7,13 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 
 | Path                                                                         | Contents                                                                                                                    |
 | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `[charts/service/](charts/service/)`                                         | Shared Helm chart that deploys one HTTP service                                                                             |
-| `[services/platform-verification-api/](services/platform-verification-api/)` | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml`    |
-| `[namespaces/](namespaces/)`                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                |
-| `[tests/](tests/)`                                                           | Chart validation script; its fixtures live in `charts/service/tests/fixtures/`                                              |
-| `[argocd/](argocd/)`                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
-| `[cluster/](cluster/)`                                                       | What the root Application manages: the `staging` namespace, the `staging-services` project, and one Application per service |
-| `[evidence/](evidence/)`                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results                                     |
+| [`charts/service/`](charts/service/)                                         | Shared Helm chart that deploys one HTTP service                                                                             |
+| [`services/platform-verification-api/`](services/platform-verification-api/) | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml`    |
+| [`namespaces/`](namespaces/)                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                |
+| [`tests/`](tests/)                                                           | Chart validation script; its fixtures live in `charts/service/tests/fixtures/`                                              |
+| [`argocd/`](argocd/)                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
+| [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` namespace, the `staging-services` project, and one Application per service |
+| [`evidence/`](evidence/)                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results                                     |
 
 
 `values-staging.yaml` holds the digest of an image the pipeline published. Changing it chooses what staging runs; see [Promoting an image to staging](../pipeline/README.md#promoting-an-image-to-staging).
@@ -32,7 +32,7 @@ I install Argo CD 3.5.3 as the **core** install: the application controller, rep
 | Argo CD and its settings                                                                          | `argocd/kustomization.yaml`, `argocd/namespace.yaml`, `argocd/patches/` | `bootstrap.sh`                          |
 | Root project `platform` and root Application `staging-platform`                                   | `argocd/root/`                                                          | `bootstrap.sh`                          |
 | `staging` namespace (Pod Security "restricted"), `staging-services` project, service Applications | `cluster/`                                                              | The root Application, from `main`       |
-| Each service's Deployment, Service, ConfigMap, and ServiceAccount                                 | `charts/service/` with `services/<service>/` values                     | That service's Application, from `main` |
+| Each service's Deployment, Service, ConfigMap, ServiceAccount, and SecretProviderClass (when it has secrets) | `charts/service/` with `services/<service>/` values                     | That service's Application, from `main` |
 
 
 The overlay pins the upstream `core-install.yaml` to tag `v3.5.3`, pins every Argo CD and Redis image by digest, adds resource requests, sets the 180-second polling interval, and adds a health check for Applications so the root waits until each service is healthy.
@@ -283,11 +283,13 @@ What it checks:
 | 5   | Wrong namespace | Rendering into `default` is refused                                                                                                                                                 |
 
 
-The five fixtures cover each way the chart rejects input: a missing field (`missing-owner`), a malformed value (`short-digest`), an unknown field (`unknown-key`), a name over 63 characters (`name-too-long`), and a request above its limit (`cpu-request-above-limit`).
+The six fixtures cover each way the chart rejects input: a missing field (`missing-owner`), a malformed value (`short-digest`), an unknown field (`unknown-key`), a name over 63 characters (`name-too-long`), a request above its limit (`cpu-request-above-limit`), and a secret variable that does not end in `_FILE` (`secret-env-not-file`).
 
 Exit codes: `0` when every check passes, `1` when a check fails, and `2` when a tool is missing.
 
 The Kubernetes schemas are pinned to version 1.36.4 (the `KUBERNETES_VERSION` variable in the script), matching the GKE cluster from my first lab session. The first run downloads the schemas into `~/.cache/kubeconform`, so it needs internet access; later runs use the cache. Set `KUBECONFORM_CACHE` to use a different directory.
+
+kubeconform skips SecretProviderClass: it has no schema for it, and the secret list inside it is a YAML string that no schema could check. Argo CD's sync and the Pod's secret mount check it in the cluster.
 
 To add an invalid fixture, create a small values file in `platform/charts/service/tests/fixtures/invalid/` that changes one input, and make its first line `# expect: <text the error must contain>`. Match a short, stable part of the message, such as the field path.
 
@@ -325,7 +327,7 @@ Add `--show-only templates/service.yaml` to render one template. Rendering does 
 
 ## Chart inputs
 
-`[charts/service/values.schema.json](charts/service/values.schema.json)` enforces these rules during lint and rendering. The chart's templates check the combined name length and that requests are not above limits during rendering.
+[`charts/service/values.schema.json`](charts/service/values.schema.json) enforces these rules during lint and rendering. The chart's templates check the combined name length, that requests are not above limits, and that no secret `name` or `env` repeats, during rendering.
 
 
 | Key                                                    | Required      | Rule                                                         |
@@ -343,6 +345,9 @@ Add `--show-only templates/service.yaml` to render one template. Rendering does 
 | `resources.requests.cpu`, `resources.limits.cpu`       | Yes           | Millicores, such as `100m`; requests not above limits        |
 | `resources.requests.memory`, `resources.limits.memory` | Yes           | Mebibytes, such as `128Mi`; requests not above limits        |
 | `replicaCount`                                         | No, default 2 | Integer from 2 to 3                                          |
+| `secrets` | No | Entries with `name`, a Secret Manager secret ID, and `env`, an environment variable ending in `_FILE`; each name and env appears once |
+
+Each secret is mounted read-only at `/var/secrets/<name>` from its latest version, and its `env` variable holds that path, so the value never passes through Git or the ConfigMap. A secret mounts only if Terraform grants it to the service's Kubernetes service account; without the grant, new Pods stay in `ContainerCreating` while the existing Pods keep serving. Set `secrets` in the environment values file, because secret IDs include the environment.
 
 
 `environment` and `serviceName` together must produce a name of at most 63 characters. A service image must declare a numeric non-root user, because the chart requires non-root execution without setting a user ID.

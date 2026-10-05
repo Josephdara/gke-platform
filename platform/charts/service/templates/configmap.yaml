@@ -10,4 +10,7 @@ data:
   ENVIRONMENT: {{ .Values.environment | quote }}
   RELEASE_VERSION: {{ .Values.releaseVersion | quote }}
   APP_PORT: {{ .Values.containerPort | quote }}
+  {{- range .Values.secrets }}
+  {{ .env }}: {{ printf "%s/%s" (include "service.secretsDir" $) .name | quote }}
+  {{- end }}
 

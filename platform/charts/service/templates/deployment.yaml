@@ -1,4 +1,5 @@
 {{- include "service.validateResources" . }}
+{{- include "service.validateSecrets" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -43,6 +44,12 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "service.fullname" . }}
+          {{- if .Values.secrets }}
+          volumeMounts:
+            - name: secrets
+              mountPath: {{ include "service.secretsDir" . }}
+              readOnly: true
+          {{- end }}
           resources:
             requests:
               cpu: {{ .Values.resources.requests.cpu | quote }}
@@ -84,3 +91,12 @@ spec:
             capabilities:
               drop:
                 - ALL
+      {{- if .Values.secrets }}
+      volumes:
+        - name: secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "service.fullname" . }}
+      {{- end }}
