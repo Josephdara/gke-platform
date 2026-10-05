@@ -261,6 +261,6 @@ I used these versions:
 | Terraform root and validation | Done |
 | Persistent resources: APIs, image repository, node service account | Done |
 | Image pipeline resources and GitHub connection | Done |
-| Budget, billing export dataset, and billing export (console) | Planned |
+| Budget, billing export dataset, and billing export (console) | Done |
 | Lab network and cluster | Created and deleted in each session |
-| Argo CD on the lab cluster | Verified in session 3 (2026-10-03); see the [evidence report](../platform/evidence/2026-10-03-gitops.md) |
+| Argo CD on the lab cluster | Verified in session 3; see the [evidence report](../platform/evidence/2026-10-03-gitops.md) |
