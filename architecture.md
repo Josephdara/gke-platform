@@ -8,11 +8,11 @@ This document is the architecture source of truth. `plan.pdf` describes build se
 
 ## Resource ownership
 
-- **Terraform** owns the required APIs, the VPC and subnets, Cloud Router and Cloud NAT, GKE cluster and node pools, the Artifact Registry image repository, Secret Manager resources and IAM, Google service accounts, workload identity permissions, Cloud Build triggers and repository link, the build evidence bucket, and standalone DNS, IP, and certificate resources.
+- **Terraform** owns the required APIs, the VPC and subnets, Cloud Router and Cloud NAT, GKE cluster and node pools, the Artifact Registry image repository, Secret Manager resources, IAM, and audit logging, Google service accounts, workload identity permissions, Cloud Build triggers and repository link, the build evidence bucket, and standalone DNS, IP, and certificate resources.
 - **Argo CD** owns namespaces, scoped RBAC, Kubernetes service accounts (KSAs), application resources, SecretProviderClass, HPA/PDB, network policies, Gateway/HTTPRoute, and Kyverno.
 - **Manual bootstrap** covers project and billing setup, one active Terraform state bucket and the APIs Terraform needs before it can run, the budget, the billing export dataset and its export configuration, the Cloud Build GitHub connection and its app installation, limited to this repository, Argo CD installation in each lab session, and secret values. These dependencies are documented for reproducibility.
 
-Terraform and Argo CD have separate resource ownership boundaries. GKE controllers own the cloud resources generated from Gateway objects. Within Argo CD, the platform Application owns shared resources, including namespaces, platform RBAC, AppProjects, service Application definitions, Gateway resources, and admission policies. Each service Application owns its service chart resources. An individual Kubernetes resource has only one Application owner.
+Terraform and Argo CD have separate resource ownership boundaries. GKE controllers own the cloud resources generated from Gateway objects. Within Argo CD, the platform Application owns shared resources, including namespaces, namespace quotas and limits, default network policies, platform RBAC, AppProjects, service Application definitions, Gateway resources, and admission policies. Each service Application owns its service chart resources. An individual Kubernetes resource has only one Application owner.
 
 ## Project structure
 
@@ -46,7 +46,7 @@ Terraform provisions a custom-mode VPC and subnet with node range `10.40.0.0/24`
 
 Application Services use ClusterIP. The first service is exposed through a global external managed Gateway, global static IP, DNS A record, and Certificate Manager certificate/map. Certificate DNS authorization allows certificate resources to remain independent of the temporary endpoint IP. Argo CD owns Gateway resources; Terraform owns the standalone IP, DNS, and certificate resources. [Gateway TLS support](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/gateway-security), [certificate DNS authorization](https://docs.cloud.google.com/certificate-manager/docs/domain-authorization).
 
-Workload connectivity includes DNS, approved service traffic, and identity or Google API access where required. Namespace isolation is part of the service interface. Restrictive internet egress is optional hardening and is not a prerequisite for the first Git-based deployment. When enabled, default-deny egress has explicit allowances for required DNS, Argo component communication, Kubernetes API access, GKE identity endpoints, and Google APIs. General outbound HTTPS is allowed for the Argo CD repository server to fetch Git sources.
+Application namespaces deny all ingress and egress by default and allow DNS to cluster DNS. A service's ingress is opened only for approved callers, added with the first caller: the Gateway, then service-to-service traffic. Kubelet probes come from the Pod's own node, which network policy always allows. Workload connectivity includes DNS, approved service traffic, and identity or Google API access where required; mounted secrets need no workload egress because the node's CSI driver fetches them. Namespace isolation is part of the service interface. Restrictive egress for platform controller namespaces is optional hardening. When enabled, it has explicit allowances for required DNS, Argo component communication, Kubernetes API access, GKE identity endpoints, and Google APIs; general outbound HTTPS is allowed for the Argo CD repository server to fetch Git sources.
 
 Standard Kubernetes NetworkPolicy does not select destinations by domain name, so an internet HTTPS allowance limits which workloads connect, not the hosts they reach. GKE’s separate FQDN policy capability is outside the initial scope. Pod egress policies do not control node image pulls. Approved-registry admission rules govern application image sources; owner-managed controller images are pinned by digest and pulled from their upstream registries until approved-registry enforcement begins, after which they are mirrored into Artifact Registry, with Google-managed components governed separately. [GKE network-policy requirements and capabilities](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/network-policy).
 
@@ -60,7 +60,7 @@ General PR validation performs static Terraform checks without state access. Inf
 
 ## IAM and workload identity
 
-Workload Identity Federation for GKE provides direct resource access with least-privilege permissions. Terraform grants each KSA principal access to specific Google Cloud resources.
+Workload Identity Federation for GKE provides direct resource access with least-privilege permissions. Each service has its own KSA. Terraform grants that KSA's principal, identified by namespace and KSA name, access to individual Google Cloud resources, never to namespace-wide or pool-wide principal sets. Grants are kept as a per-service map in Terraform. The GKE metadata server prevents workloads from using the node's identity. Every cluster in the project shares one workload identity pool, so a KSA with the same namespace and name in another cluster would receive the same access; the project runs one cluster at a time. [Workload Identity Federation for GKE](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/workload-identity).
 
 Deployment remains owner-operated, without separate break-glass access. CI and workload identities have permissions distinct from the owner’s organization-level access.
 
@@ -68,23 +68,33 @@ Validation builds have only the permissions needed for checks and their outputs,
 
 Node identities have Artifact Registry Reader access scoped to the image repository and compatible node access scopes. Application KSA permissions govern application API calls independently of node image pulls. Argo CD reads the public Git repository without credentials. [GKE image access](https://docs.cloud.google.com/artifact-registry/docs/integrate-gke).
 
+## Namespace isolation
+
+Each environment has one namespace. Services in an environment share it and are separated by their own KSA, resource-level grants, and network policies. Kubernetes RBAC cannot separate teams within a shared namespace; a team boundary requires its own namespace.
+
+Developers have read-only access in their environment's namespace to Pods, Pod logs, events, Deployments, Services, and ConfigMaps. They cannot read Secrets, exec into or port-forward to Pods, or change resources; deployment changes go through Git. A namespaced Role grants this access to the Kubernetes group `staging-developers`. Group membership requires Google Groups for RBAC, and developers also need the IAM Kubernetes Engine Cluster Viewer role to obtain cluster credentials; until both are configured, access tests use impersonation. [Google Groups for RBAC](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/google-groups-rbac).
+
+A ResourceQuota bounds the namespace at 1 CPU and 1Gi of requests, 3 CPU and 2Gi of limits, and 10 Pods. A LimitRange supplies default requests of 50m CPU and 64Mi, default limits of 200m CPU and 128Mi, and a per-container maximum of 500m CPU and 256Mi. The quota is revisited when the second service and HPA are added.
+
 ## Secrets management
 
 Secret Manager supplies mounted secrets through the managed GKE add-on. Each authorized KSA has `roles/secretmanager.secretAccessor` on the required secrets.
 
 Automatic rotation is explicitly enabled on a supported GKE version with a two-minute rotation interval. Secret references intended to rotate resolve updated versions, and applications reread changed mounted files. Live validation measures the complete path from a new secret version to application use; the configured interval is not a guaranteed application-observation deadline. Secret values are seeded manually and excluded from Git, images, and Terraform inputs/state. [Managed add-on and rotation](https://docs.cloud.google.com/secret-manager/docs/secret-manager-managed-csi-component).
 
+A service declares secrets in its environment values as `secrets[]` entries, each naming a Secret Manager secret and an environment variable ending in `_FILE`. The chart mounts each secret read-only in a chart-owned directory, resolves `versions/latest`, and passes only the file path through that variable. Applications that cannot load a valid secret at startup report not ready; after a rotation to an invalid value, they keep the last valid value and log only the error type. A bad secret therefore affects only the service that owns it and never takes down Pods already serving; recovery adds a corrected version before disabling the bad one. Data Access audit logs record which principal reads each secret version. The first service demonstrates the path with `staging-platform-verification-api-demo`, a JSON secret holding a label and a value; `staging-forbidden-demo` has no grants and is used only for refusal tests.
+
 ## Application services
 
-The first service, `platform-verification-api`, uses Python with FastAPI and Uvicorn. It returns service/version JSON and exposes `/livez` for process health and `/readyz` for local initialization and required configuration. A later `/backend` integration will call the second service for a greeting and release identity. The second service also exposes health endpoints; its implementation is deferred. API liveness is independent of backend availability.
+The first service, `platform-verification-api`, uses Python with FastAPI and Uvicorn. It returns service/version JSON, plus its demo secret's label when one is configured, and exposes `/livez` for process health and `/readyz` for local initialization and required configuration. A later `/backend` integration will call the second service for a greeting and release identity. The second service also exposes health endpoints; its implementation is deferred. API liveness is independent of backend availability.
 
-JSON logs contain timestamp, severity, service, environment, release, request ID, status, and duration. Secret values remain internal to the applications. Network isolation permits frontend-to-backend traffic and denies reverse or unrelated traffic. The second service shares the platform interface, with onboarding limited to service configuration and registration.
+JSON logs contain timestamp, severity, service, environment, release, request ID, status, and duration. Secret values remain internal to the applications and are never logged or returned. Network isolation permits frontend-to-backend traffic and denies reverse or unrelated traffic. The second service shares the platform interface, with onboarding limited to service configuration and registration.
 
 ## Helm chart design
 
 A shared chart defines Deployment, ClusterIP Service, KSA, ConfigMap, secret mounts, and probes. The extended chart includes HPA, PDB, NetworkPolicy, and optional HTTPRoute.
 
-Required inputs are image digest, owner/cost labels, port, resource settings, and probe paths. Supported options include replica bounds, approved identity, secret references, and network dependencies. Schema and chart validation reject invalid types or ports, missing labels or digests, and inverted bounds. Arbitrary pod-spec overrides are outside the interface.
+Required inputs are image digest, owner/cost labels, port, resource settings, and probe paths. Supported options include replica bounds, approved identity, secret references through `secrets[]`, and network dependencies, which arrive with the Gateway. Schema and chart validation reject invalid types or ports, missing labels or digests, and inverted bounds. Arbitrary pod-spec overrides are outside the interface.
 
 Security defaults include non-root execution, a read-only root filesystem, dropped capabilities, and disabled privilege escalation. Each application initially requests 100m CPU and 128Mi memory, with limits of 500m CPU and 256Mi memory. Replica bounds are two to three, CPU HPA targets 70%, and the PDB retains at least one available replica.
 
@@ -136,7 +146,7 @@ Each experiment has a cost report separating direct service costs from shared pl
 
 ## Validation and evidence
 
-Required PR checks cover the applicable service tests, container scanning, approved image evidence, Helm rendering/schema validation with the documented Helm baseline, static Terraform validation, and positive/negative Kyverno fixtures. Infrastructure plans use the separate trusted workflow. Live checks cover deployment health, the running image digest matching approved configuration, secret refresh, authorized and unauthorized IAM/RBAC access, and namespace isolation. Restrictive internet-egress checks apply when that option is enabled. Retention checks confirm that deployed and recovery images remain available. Load, pod-failure, and node-drain exercises have separate execution paths.
+Required PR checks cover the applicable service tests, container scanning, approved image evidence, Helm rendering/schema validation with the documented Helm baseline, static Terraform validation, and positive/negative Kyverno fixtures. Infrastructure plans use the separate trusted workflow. Live checks cover deployment health, the running image digest matching approved configuration, secret refresh, authorized and unauthorized IAM/RBAC access, and namespace isolation. Live isolation checks include denied application egress; platform controller egress checks apply when that option is enabled. Retention checks confirm that deployed and recovery images remain available. Load, pod-failure, and node-drain exercises have separate execution paths.
 
 Initial acceptance targets assume both services and warm nodes:
 
@@ -173,5 +183,5 @@ Terraform, the Git repository, retained images, and documented bootstrap define 
 
 - Verified bootstrap identifiers, credentials, and DNS ownership.
 - Demonstrated Git-based deployment and revert recovery using approved, retained image digests.
-- Validated required permissions, capacity, namespace isolation, policies, and acceptance targets; restrictive internet-egress checks pass when that option is enabled.
+- Validated required permissions, capacity, namespace isolation, policies, and acceptance targets; platform controller egress checks pass when that option is enabled.
 - Verified billing notifications and teardown that removes lab resources while preserving designated persistent resources.
