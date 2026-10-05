@@ -11,6 +11,7 @@ This is how I set up and run the GCP side of the platform in project `gke-build-
 | [`modules/foundation/`](modules/foundation/) | Required APIs, including Cloud Build and Container Analysis, and the Artifact Registry image repository |
 | [`modules/identity/`](modules/identity/) | The GKE node and Cloud Build service accounts and their project roles |
 | [`modules/pipeline/`](modules/pipeline/) | Build evidence bucket, Cloud Build repository link, and the two build triggers |
+| [`modules/secrets/`](modules/secrets/) | Secret Manager secrets, each service's read grants, and Data Access audit logging for Secret Manager |
 | [`modules/network/`](modules/network/) | Lab network: VPC, subnet, Cloud Router, and Cloud NAT |
 | [`modules/gke/`](modules/gke/) | Lab GKE cluster and node pool |
 | [`tests/`](tests/) | Terraform validation script and its test input |
@@ -30,6 +31,7 @@ Persistent resources stay between sessions and are protected against deletion. L
 | Node service account | `staging-nodes-sa`, with read access to the image repository | Persistent |
 | Build service accounts | `staging-build-validate-sa`, which can only write logs; `staging-build-publish-sa`, which can also write to the image repository, and create and list objects in the evidence bucket but not read, overwrite, or delete them | Persistent |
 | Build evidence bucket | `gke-build-proj-staging-build-evidence`: scan reports and SBOMs, deleted after 90 days, protected against deletion | Persistent |
+| Secrets | `staging-platform-verification-api-demo`, readable only by the API's Kubernetes service account, and `staging-forbidden-demo`, with no grants. Values are added by hand, never through Terraform. Data Access audit logs record every read | Persistent |
 | Build triggers | Repository link `gke-platform`, and triggers `staging-pr-validate` and `staging-main-publish`; see the [pipeline README](../pipeline/README.md) | Persistent |
 | Network | `staging-vpc`; subnet `staging-nodes-subnet` (10.40.0.0/24, pods 10.41.0.0/20, services 10.42.0.0/24) with Private Google Access | Lab |
 | Outbound access | `staging-router` and `staging-nat` | Lab |
