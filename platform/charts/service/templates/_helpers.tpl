@@ -46,3 +46,19 @@ Requests must not exceed limits. The schema restricts units to m and Mi, so the 
 {{- fail (printf "resources.requests.memory (%s) is above resources.limits.memory (%s). Lower the request or raise the limit." $r.requests.memory $r.limits.memory) -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "service.secretsDir" -}}
+/var/secrets
+{{- end -}}
+
+{{- define "service.validateSecrets" -}}
+{{- $names := list -}}
+{{- $envs := list -}}
+{{- range .Values.secrets -}}
+{{- $names = append $names .name -}}
+{{- $envs = append $envs .env -}}
+{{- end -}}
+{{- if or (ne (len $names) (len (uniq $names))) (ne (len $envs) (len (uniq $envs))) -}}
+{{- fail "secrets lists the same name or env more than once. Remove the duplicate entry." -}}
+{{- end -}}
+{{- end -}}

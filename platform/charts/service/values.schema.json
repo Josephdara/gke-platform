@@ -72,6 +72,19 @@
       "type": "integer",
       "minimum": 2,
       "maximum": 3
+    },
+    "secrets": {
+      "description": "Secret Manager secrets mounted read-only. A secret mounts only if Terraform grants it to this service's KSA.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "env"],
+        "properties": {
+          "name": { "description": "Secret Manager secret ID, also the file name in the mount directory.", "type": "string", "pattern": "^[A-Za-z0-9_-]{1,255}$" },
+          "env": { "description": "Environment variable that receives the file path. Must end in _FILE.", "type": "string", "pattern": "^[A-Z][A-Z0-9_]*_FILE$" }
+        }
+      }
     }
   },
   "$defs": {
