@@ -1,6 +1,6 @@
 # Infrastructure
 
-This is how I set up and run the GCP side of the platform in project `gke-build-proj`: a bootstrap script you run once, then one Terraform root you plan and apply. My design reference is [architecture.md](../architecture.md). Run every command on this page from the repository root.
+This is how I set up and run the GCP side of the platform in project `gke-build-proj`: a bootstrap script that runs once, then one Terraform root, planned and applied for every change. My design reference is [architecture.md](../architecture.md). Run every command on this page from the repository root.
 
 ## Layout
 
@@ -15,11 +15,11 @@ This is how I set up and run the GCP side of the platform in project `gke-build-
 | [`modules/gke/`](modules/gke/) | Lab GKE cluster and node pool |
 | [`tests/`](tests/) | Terraform validation script and its test input |
 | [`.trivyignore.yaml`](.trivyignore.yaml) | Accepted Trivy findings, each with a reason and an expiry date |
-| `private/` | Your saved Terraform plans. Git ignores it |
+| `private/` | Saved Terraform plans. Git ignores it |
 
 ## What Terraform manages
 
-I use one Terraform root, [`env/staging/`](env/staging/). Its state lives under the `staging` prefix of the `gke-build-proj-staging-tfstate` bucket. I run Terraform with my own project owner credentials, so you need the same access. Terraform CI, with its own deployment account, comes with the validation suite.
+I use one Terraform root, [`env/staging/`](env/staging/). Its state lives under the `staging` prefix of the `gke-build-proj-staging-tfstate` bucket. I run Terraform with my own project owner credentials. To run it yourself, you need the same access. Terraform CI, with its own deployment account, comes with the validation suite.
 
 Persistent resources stay between sessions and are protected against deletion. Lab resources exist only during a session: a plan with `lab_enabled=true` creates them, and a plan with `lab_enabled=false` removes them.
 
@@ -36,13 +36,13 @@ Persistent resources stay between sessions and are protected against deletion. L
 | Cluster | `staging-super-cluster`: zonal in us-east4-b, Regular channel from 1.36, private nodes, DNS endpoint only | Lab |
 | Node pool | `staging-super-pool`: 2 to 3 e2-standard-2 nodes, 30 GB pd-balanced disks | Lab |
 
-Terraform does not manage the budget or the billing export; you set those up in the console. See [Budget and billing export](#budget-and-billing-export).
+Terraform does not manage the budget or the billing export; both are set up by hand in the console. See [Budget and billing export](#budget-and-billing-export).
 
 ## Sessions
 
 A session lasts at most 24 hours from creation to removal. For every change, save a plan, review it, and apply that saved plan. The saved plan remembers `lab_enabled`, so `apply` needs no `-var`.
 
-`lab_enabled` has no default, so set it on every plan. If you leave it out, Terraform stops with `No value for required variable` instead of planning a teardown. During a session, plan any other change with `-var=lab_enabled=true` so the lab stays in place.
+Always pass `-var=lab_enabled=…` on every plan. The variable defaults to `false`, so a plan without it proposes removing the lab. If you see a plan like that during a session, discard it. To plan any other change during a session, use `-var=lab_enabled=true` so the lab stays in place.
 
 Because of `-chdir`, plan paths are relative to `infra/env/staging/`, so `../../private/` is `infra/private/`.
 
@@ -66,11 +66,38 @@ Because of `-chdir`, plan paths are relative to `infra/env/staging/`, so `../../
    gcloud container clusters get-credentials staging-super-cluster --zone=us-east4-b --project=gke-build-proj --dns-endpoint
    ```
 
+4. Install Argo CD and hand the cluster over to Git. Run this from an up-to-date `main`, because it applies `platform/argocd/` from your checkout:
+
+   ```bash
+   platform/argocd/bootstrap.sh
+   ```
+
+   It ends with `PASS  running image matches Git` once both Applications are Synced and Healthy. See [GitOps with Argo CD](../platform/README.md#gitops-with-argo-cd).
+
 Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `kubectl` and `helm` command. Your kubectl must be within one minor version of the cluster (1.36).
 
 ### End a session
 
-1. Stop Argo CD from recreating resources, then delete the Kubernetes objects that create cloud resources, such as Gateways, while the cluster still exists. Otherwise their load balancers are left behind.
+1. Stop Argo CD from recreating resources. Turn off automated sync on the root Application first, because it would otherwise restore the service Application's automation, then on the service Application:
+
+   ```bash
+   kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n argocd patch applications.argoproj.io staging-platform --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
+   ```
+
+   ```bash
+   kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n argocd patch applications.argoproj.io staging-platform-verification-api --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
+   ```
+
+   Then delete any Kubernetes objects that create cloud resources, such as Gateways, while the cluster still exists. Otherwise their load balancers are left behind. Both of these must print nothing:
+
+   ```bash
+   kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster get svc -A --field-selector spec.type=LoadBalancer --no-headers
+   ```
+
+   ```bash
+   kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster get gateway -A --no-headers
+   ```
+
 2. Plan with the lab off, and check that it removes only lab resources:
 
    ```bash
@@ -83,7 +110,17 @@ Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `k
    terraform -chdir=infra/env/staging apply ../../private/lab-off.tfplan
    ```
 
-4. Check that no billable lab resources remain.
+4. Check that no billable lab resources remain. Every list must be empty, except `compute networks` and `compute firewall-rules`, which must show nothing from `staging-vpc`. The `${=r}` splits each entry into words in zsh; in bash, use `$r`:
+
+   ```bash
+   for r in "container clusters" "compute instances" "compute disks" "compute addresses" "compute forwarding-rules" "compute network-endpoint-groups" "compute routers" "compute networks" "compute firewall-rules"; do echo "== $r"; gcloud ${=r} list --project=gke-build-proj --format="value(name)"; done
+   ```
+
+   Then confirm Terraform agrees. Expect `No changes` and `exit=0`:
+
+   ```bash
+   terraform -chdir=infra/env/staging plan -var=lab_enabled=false -detailed-exitcode; echo "exit=$?"
+   ```
 
 ## Bootstrap
 
@@ -108,7 +145,7 @@ Before Terraform can run, it needs somewhere to store state, a few enabled APIs,
 
 1. Checks the active account, the project, that billing is enabled, and the Application Default Credentials quota project.
 2. Enables Service Usage, Cloud Resource Manager, IAM, IAM Service Account Credentials, and Cloud Storage.
-3. If the Compute Engine API is on, lists the `default` network, its firewall rules, and any Editor grant to the Compute Engine default service account. It removes them only when you pass `--apply-cleanup`.
+3. If the Compute Engine API is on, lists the `default` network, its firewall rules, and any Editor grant to the Compute Engine default service account. It removes them only when run with `--apply-cleanup`.
 4. Creates the two state buckets if they are missing, then reapplies every setting.
 5. Prints the project details and each bucket's settings and IAM policy.
 
@@ -165,13 +202,13 @@ Check the billing account's currency under Billing, then Account management. The
 
 At the start of each session, check that the budget still exists and belongs to the billing account the project is linked to. If the project moves to another billing account, the old budget stops alerting without any warning.
 
-The budget only sends alerts. It does not stop spending, and billing data arrives with a delay, so your real cost controls are session length, resource limits, and ending each session on time.
+The budget only sends alerts. It does not stop spending, and billing data arrives with a delay, so the real cost controls are session length, resource limits, and ending each session on time.
 
 ### Billing export
 
 Turn this on before your first session, so cost data covers it.
 
-1. In BigQuery, create a dataset named `gke_build_proj_staging_billing` in the `US` multi-region. A multi-region dataset receives data from the start of the previous month; a regional dataset only receives data from the day you turn the export on.
+1. In BigQuery, create a dataset named `gke_build_proj_staging_billing` in the `US` multi-region. A multi-region dataset receives data from the start of the previous month; a regional dataset only receives data from the day the export is turned on.
 2. Under Billing, then Billing export, turn on **Detailed usage cost** export to that project and dataset. Google adds its export account as an owner of the dataset automatically.
 3. Data starts arriving within a few hours.
 
@@ -223,4 +260,5 @@ I used these versions:
 | Persistent resources: APIs, image repository, node service account | Done |
 | Image pipeline resources and GitHub connection | Done |
 | Budget, billing export dataset, and billing export (console) | Planned |
-| Lab network and cluster | Created and deleted |
+| Lab network and cluster | Created and deleted in each session |
+| Argo CD on the lab cluster | Verified in session 3 (2026-10-03); see the [evidence report](../platform/evidence/2026-10-03-gitops.md) |

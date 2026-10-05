@@ -1,6 +1,6 @@
 # Pipeline
 
-This is how I turn application source into an image you can deploy. Cloud Build tests, builds, and scans the API image on every pull request, and on every merge to `main` that changes the API it also publishes the image with its evidence. Run every command on this page from the repository root. The Terraform that creates the triggers, identities, and evidence bucket is in the [infrastructure README](../infra/README.md).
+This is how I turn application source into a deployable image. Cloud Build tests, builds, and scans the API image on every pull request, and on every merge to `main` that changes the API it also publishes the image with its evidence. Run every command on this page from the repository root. The Terraform that creates the triggers, identities, and evidence bucket is in the [infrastructure README](../infra/README.md).
 
 ## Layout
 
@@ -17,7 +17,7 @@ Both triggers run in `us-east4` on the `staging-github` connection, which links 
 | Trigger | Runs when | Runs as | Can |
 | --- | --- | --- | --- |
 | `staging-pr-validate` | A pull request targets `main`. A pull request from anyone but me waits until I comment `/gcbrun` | `staging-build-validate-sa` | Write build logs only |
-| `staging-main-publish` | A merge to `main` changes `apps/platform-verification-api/**` or `pipeline/cloudbuild-publish.yaml` | `staging-build-publish-sa` | Write to the image repository; create and list objects in the evidence bucket, but not read, overwrite, or delete them |
+| `staging-main-publish` | A merge to `main` changes `apps/platform-verification-api/**` or `pipeline/cloudbuild-publish.yaml`. Markdown files in the app folder are ignored, so a README change does not publish an image | `staging-build-publish-sa` | Write to the image repository; create and list objects in the evidence bucket, but not read, overwrite, or delete them |
 
 `main` requires a pull request and a passing `staging-pr-validate` check, including for me. A change that only touches deployment configuration, such as `values-staging.yaml`, gets the validation check but never starts a publish build.
 
@@ -73,7 +73,7 @@ gcloud builds list --region=us-east4 --filter="substitutions.TRIGGER_NAME=stagin
 
 ## Promoting an image to staging
 
-Publishing does not deploy anything. You choose what staging runs with a pull request:
+Publishing does not deploy anything. A pull request chooses what staging runs:
 
 1. Pick a publish build with status `SUCCESS` whose evidence exists.
 2. Read its `scan.json` and decide whether you are happy with what it found.

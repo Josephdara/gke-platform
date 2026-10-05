@@ -4,14 +4,95 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 
 ## Layout
 
-| Path | Contents |
-| --- | --- |
-| [`charts/service/`](charts/service/) | Shared Helm chart that deploys one HTTP service |
-| [`services/platform-verification-api/`](services/platform-verification-api/) | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml` |
-| [`namespaces/`](namespaces/) | Local namespace manifest that enforces the Pod Security "restricted" profile |
-| [`tests/`](tests/) | Chart validation script; its fixtures live in `charts/service/tests/fixtures/` |
 
-`values-staging.yaml` holds the digest of an image the pipeline published. Changing it is how you choose what staging runs; see [Promoting an image to staging](../pipeline/README.md#promoting-an-image-to-staging).
+| Path                                                                         | Contents                                                                                                                    |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `[charts/service/](charts/service/)`                                         | Shared Helm chart that deploys one HTTP service                                                                             |
+| `[services/platform-verification-api/](services/platform-verification-api/)` | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml`    |
+| `[namespaces/](namespaces/)`                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                |
+| `[tests/](tests/)`                                                           | Chart validation script; its fixtures live in `charts/service/tests/fixtures/`                                              |
+| `[argocd/](argocd/)`                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
+| `[cluster/](cluster/)`                                                       | What the root Application manages: the `staging` namespace, the `staging-services` project, and one Application per service |
+| `[evidence/](evidence/)`                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results                                     |
+
+
+`values-staging.yaml` holds the digest of an image the pipeline published. Changing it chooses what staging runs; see [Promoting an image to staging](../pipeline/README.md#promoting-an-image-to-staging).
+
+## GitOps with Argo CD
+
+On the lab cluster, Argo CD deploys whatever `main` declares. I never apply application manifests myself: I change Git through a pull request, and Argo CD makes the cluster match within a few minutes.
+
+### What runs and who owns what
+
+I install Argo CD 3.5.3 as the **core** install: the application controller, repo server, Redis, and ApplicationSet controller, with no API server, web UI, or SSO. Nothing is exposed from the private cluster. It polls this repository every 180 seconds through Cloud NAT and renders the chart with its bundled Helm 4.2.1, the same version I use locally.
+
+
+| Layer                                                                                             | Files                                                                   | Applied by                              |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------- |
+| Argo CD and its settings                                                                          | `argocd/kustomization.yaml`, `argocd/namespace.yaml`, `argocd/patches/` | `bootstrap.sh`                          |
+| Root project `platform` and root Application `staging-platform`                                   | `argocd/root/`                                                          | `bootstrap.sh`                          |
+| `staging` namespace (Pod Security "restricted"), `staging-services` project, service Applications | `cluster/`                                                              | The root Application, from `main`       |
+| Each service's Deployment, Service, ConfigMap, and ServiceAccount                                 | `charts/service/` with `services/<service>/` values                     | That service's Application, from `main` |
+
+
+The overlay pins the upstream `core-install.yaml` to tag `v3.5.3`, pins every Argo CD and Redis image by digest, adds resource requests, sets the 180-second polling interval, and adds a health check for Applications so the root waits until each service is healthy.
+
+The two projects are guardrails. `platform` may only create Namespaces, AppProjects, and Applications. `staging-services` may only deploy to `staging`, may create no cluster-wide objects, and allows only ServiceAccount, ConfigMap, Service, and Deployment. Argo CD refuses anything else; add a kind here when the chart starts rendering it.
+
+Service Applications sync automatically, revert manual changes in the cluster (self-heal), and delete what is removed from Git (prune). The root also syncs automatically and self-heals, but never prunes, so a mistaken commit cannot delete the `staging` namespace.
+
+### Bootstrapping
+
+Start a lab session as described in the [infrastructure README](../infra/README.md#start-a-session), then run this from an up-to-date `main`:
+
+```sh
+platform/argocd/bootstrap.sh
+```
+
+It checks it can reach the staging cluster, installs Argo CD with server-side apply, waits for the CRDs and controllers, applies the root, and waits until both Applications are Synced and Healthy. It then reads `values-staging.yaml` at the commit Argo CD synced and compares its digest with the image the pods are running. A successful run ends with:
+
+```text
+  Bundled Helm:     v4.2.1+...
+PASS  running image matches Git
+```
+
+It is safe to rerun. In my last session it took about two and a half minutes.
+
+### Checking status
+
+```sh
+kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n argocd get applications.argoproj.io \
+  -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REVISION:.status.sync.revision
+```
+
+If an Application is not Synced, its conditions say why:
+
+```sh
+kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n argocd get applications.argoproj.io <name> \
+  -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}'
+```
+
+`InvalidSpecError` means a project does not allow what the Application asks for. `ComparisonError` usually means the chart failed to render; reproduce it with `helm template` as in [Testing the Helm chart](#testing-the-helm-chart). Synced but Degraded means Argo CD applied exactly what Git says and the release itself is broken: fix it or revert it in Git.
+
+### Releasing and rolling back
+
+To release, open a pull request that changes `image.digest` and `releaseVersion` in `values-staging.yaml`, as described in [Promoting an image to staging](../pipeline/README.md#promoting-an-image-to-staging), and merge it. To roll back, revert that commit through another pull request. Neither starts a build: the revert brings back the previous digest, which is still in the registry.
+
+In my last session, both took under two minutes from merge to healthy. Most of that is Argo CD waiting for its next poll; the rollout itself took under 30 seconds, without ever dropping below two ready pods.
+
+Do not use `kubectl rollout undo` or edit objects by hand: self-heal puts Git's version back within seconds.
+
+### Stopping reconciliation
+
+Before you remove the lab, turn off automated sync on the root Application first and then on each service Application, as in [End a session](../infra/README.md#end-a-session). The root manages the service Applications, so a change made to a service Application first is undone by the root.
+
+### Changing Argo CD
+
+- **Upgrading:** change the tag in the resource URL, `newTag`, and both digests in `argocd/kustomization.yaml`. If the new release bundles a different Helm version, check that it renders the chart identically before switching, and update your local Helm. Run `kubectl kustomize platform/argocd` and check the patches still apply.
+- **Settings:** edit `argocd/patches/`. The bootstrap applies them, not Argo CD, so rerun the bootstrap after merging.
+- **Adding a service:** add an Application file in `cluster/apps/`, pointing at the shared chart and the service's values. The root creates it after the merge.
+
+
 
 ## Local deployment on Docker Desktop
 
@@ -32,6 +113,8 @@ Start a local registry on port 5001, bound to `127.0.0.1` only. I avoid port 500
 docker run -d --restart unless-stopped -p 127.0.0.1:5001:5000 --name local-registry registry:2
 curl -s http://localhost:5001/v2/_catalog
 ```
+
+
 
 ### Build, scan, and publish
 
@@ -107,6 +190,8 @@ kubectl --context docker-desktop -n local rollout status \
   deployment/local-platform-verification-api --timeout=120s
 ```
 
+
+
 ### Checks
 
 **A. Healthy start.** Expect two pods at `1/1`, no restarts, and no warning events:
@@ -163,6 +248,8 @@ kubectl --context docker-desktop -n local logs svc-client
 kubectl --context docker-desktop -n local delete pod svc-client
 ```
 
+
+
 ### Clean up
 
 Deleting the namespace removes everything the chart created. Stopping the registry keeps its images for next time; `docker rm -f local-registry` removes it entirely:
@@ -171,6 +258,8 @@ Deleting the namespace removes everything the chart created. Stopping the regist
 kubectl --context docker-desktop delete namespace local
 docker stop local-registry
 ```
+
+
 
 ## Validating the chart
 
@@ -184,13 +273,15 @@ You need Helm, kubeconform (`brew install kubeconform`), and the application's v
 
 What it checks:
 
-| # | Check | Passes when |
-| --- | --- | --- |
-| 1 | App tests | The pytest suite in `apps/platform-verification-api/` passes |
-| 2 | Staging | `values.yaml` + `values-staging.yaml` renders and passes kubeconform in strict mode, so unknown or misspelled fields fail |
-| 3 | Local | `values.yaml` + `values-local.yaml` renders and passes kubeconform in strict mode |
-| 4 | Invalid inputs | Every file in `platform/charts/service/tests/fixtures/invalid/`, layered on the staging configuration, fails to render with the text on its first line. A failure names the fixture |
-| 5 | Wrong namespace | Rendering into `default` is refused |
+
+| #   | Check           | Passes when                                                                                                                                                                         |
+| --- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | App tests       | The pytest suite in `apps/platform-verification-api/` passes                                                                                                                        |
+| 2   | Staging         | `values.yaml` + `values-staging.yaml` renders and passes kubeconform in strict mode, so unknown or misspelled fields fail                                                           |
+| 3   | Local           | `values.yaml` + `values-local.yaml` renders and passes kubeconform in strict mode                                                                                                   |
+| 4   | Invalid inputs  | Every file in `platform/charts/service/tests/fixtures/invalid/`, layered on the staging configuration, fails to render with the text on its first line. A failure names the fixture |
+| 5   | Wrong namespace | Rendering into `default` is refused                                                                                                                                                 |
+
 
 The five fixtures cover each way the chart rejects input: a missing field (`missing-owner`), a malformed value (`short-digest`), an unknown field (`unknown-key`), a name over 63 characters (`name-too-long`), and a request above its limit (`cpu-request-above-limit`).
 
@@ -205,6 +296,8 @@ A passing run ends with:
 ```text
 5 passed, 0 failed
 ```
+
+
 
 ## Testing the Helm chart
 
@@ -232,22 +325,24 @@ Add `--show-only templates/service.yaml` to render one template. Rendering does 
 
 ## Chart inputs
 
-[`charts/service/values.schema.json`](charts/service/values.schema.json) enforces these rules during lint and rendering. The chart's templates check the combined name length and that requests are not above limits during rendering.
+`[charts/service/values.schema.json](charts/service/values.schema.json)` enforces these rules during lint and rendering. The chart's templates check the combined name length and that requests are not above limits during rendering.
 
-| Key | Required | Rule |
-| --- | --- | --- |
-| `project` | Yes | Lowercase letters, digits, and hyphens; starts with a letter |
-| `environment` | Yes | `local` or `staging` |
-| `serviceName` | Yes | Same format as `project` |
-| `owner` | Yes | Kubernetes label value |
-| `image.repository` | Yes | Registry host and path, without tag or digest |
-| `image.digest` | Yes | `sha256:` followed by 64 lowercase hexadecimal characters |
-| `releaseVersion` | Yes | Quoted text; Kubernetes label value |
-| `containerPort` | Yes | Integer from 1024 to 65535 |
-| `probes.liveness.path` | Yes | Starts with `/` |
-| `probes.readiness.path` | Yes | Starts with `/` |
-| `resources.requests.cpu`, `resources.limits.cpu` | Yes | Millicores, such as `100m`; requests not above limits |
-| `resources.requests.memory`, `resources.limits.memory` | Yes | Mebibytes, such as `128Mi`; requests not above limits |
-| `replicaCount` | No, default 2 | Integer from 2 to 3 |
 
-`environment` and `serviceName` together must produce a name of at most 63 characters. Your service image must declare a numeric non-root user, because the chart requires non-root execution without setting a user ID.
+| Key                                                    | Required      | Rule                                                         |
+| ------------------------------------------------------ | ------------- | ------------------------------------------------------------ |
+| `project`                                              | Yes           | Lowercase letters, digits, and hyphens; starts with a letter |
+| `environment`                                          | Yes           | `local` or `staging`                                         |
+| `serviceName`                                          | Yes           | Same format as `project`                                     |
+| `owner`                                                | Yes           | Kubernetes label value                                       |
+| `image.repository`                                     | Yes           | Registry host and path, without tag or digest                |
+| `image.digest`                                         | Yes           | `sha256:` followed by 64 lowercase hexadecimal characters    |
+| `releaseVersion`                                       | Yes           | Quoted text; Kubernetes label value                          |
+| `containerPort`                                        | Yes           | Integer from 1024 to 65535                                   |
+| `probes.liveness.path`                                 | Yes           | Starts with `/`                                              |
+| `probes.readiness.path`                                | Yes           | Starts with `/`                                              |
+| `resources.requests.cpu`, `resources.limits.cpu`       | Yes           | Millicores, such as `100m`; requests not above limits        |
+| `resources.requests.memory`, `resources.limits.memory` | Yes           | Mebibytes, such as `128Mi`; requests not above limits        |
+| `replicaCount`                                         | No, default 2 | Integer from 2 to 3                                          |
+
+
+`environment` and `serviceName` together must produce a name of at most 63 characters. A service image must declare a numeric non-root user, because the chart requires non-root execution without setting a user ID.
