@@ -46,7 +46,7 @@ class JsonFormatter(logging.Formatter):
             "event": record.getMessage(),
         }
         # Exception text can contain input or secret values; only its class is logged.
-        for key in ("request_id", "method", "path", "status", "duration_ms", "error_type"):
+        for key in ("request_id", "method", "path", "status", "duration_ms", "error_type", "secret_label"):
             if hasattr(record, key):
                 data[key] = getattr(record, key)
         return json.dumps(data, ensure_ascii=True)
