@@ -1,4 +1,45 @@
-# Accepted Trivy vulnerability findings for the platform-verification-api image.
-# Each entry needs the vulnerability ID, a statement giving the reason, and an
-# expiry date after which the finding fails the scan again.
-vulnerabilities: []
+# Accepted Trivy vulnerability findings for the platform-verification-api image. This is a demo project 
+
+vulnerabilities:
+  - id: CVE-2026-103111
+    statement: "libpcre2-8-0 is used by Debian system tools, not by Python's re module or the API. Fixed in Debian 10.42-1+deb12u2; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-13221
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-42496
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-8376
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-42497
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-48962
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-57432
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-57433
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2025-15649
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-12087
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-19487
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-48959
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-7010
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19
+  - id: CVE-2026-7017
+    statement: "perl-base is present only as an essential Debian package; the API never runs Perl. Fixed in Debian 5.36.0-7+deb12u4; remove when the pinned python base image includes it."
+    expired_at: 2026-10-19

@@ -61,6 +61,7 @@ resource "google_cloudbuild_trigger" "publish" {
     "apps/platform-verification-api/**",
     "pipeline/cloudbuild-publish.yaml",
   ]
+  ignored_files = ["apps/platform-verification-api/**/*.md"]
 
   substitutions = {
     _IMAGE           = local.image

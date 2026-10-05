@@ -1,0 +1,13 @@
+agents.md
+plan.pdf
+*.env
+infra/private/
+*.tfplan
+terraform.tfvars
+*.auto.tfvars
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+/platform-concepts-guide.md

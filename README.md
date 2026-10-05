@@ -1,6 +1,6 @@
 # GKE Application Platform
 
-I'm building a reusable application deployment platform on GKE with Terraform, Kubernetes, Argo CD, Helm, Kyverno, Cloud Build, and Docker. When it is finished, you deploy a service through a reviewed configuration change and get secure defaults, health checks, and Git-based recovery. My design reference is [architecture.md](architecture.md).
+I'm building a reusable application deployment platform on GKE with Terraform, Kubernetes, Argo CD, Helm, Kyverno, Cloud Build, and Docker. When it is finished, a developer deploys a service through a reviewed configuration change and gets secure defaults, health checks, and Git-based recovery. My design reference is [architecture.md](architecture.md).
 
 It runs in my personal GCP project `gke-build-proj` as a temporary staging environment. I work to a $100 budget and remove the cluster within 24 hours of creating it. GCP resources are named `<environment>-<purpose>`, Kubernetes resources `<environment>-<service>`, and each environment has one namespace named `<environment>`; see [Project structure](architecture.md#project-structure).
 
@@ -12,6 +12,7 @@ It runs in my personal GCP project `gke-build-proj` as a temporary staging envir
 | Validate the Helm chart, or deploy it on Docker Desktop | [Platform README](platform/README.md) |
 | Bootstrap GCP, apply Terraform, or run a lab session | [Infrastructure README](infra/README.md) |
 | Publish an image, or choose which image staging runs | [Pipeline README](pipeline/README.md) |
+| Run Argo CD, release, or roll back | [GitOps with Argo CD](platform/README.md#gitops-with-argo-cd) |
 
 ## Repository layout
 
@@ -22,6 +23,9 @@ It runs in my personal GCP project `gke-build-proj` as a temporary staging envir
 | [`platform/services/platform-verification-api/`](platform/services/platform-verification-api/) | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml` |
 | [`platform/namespaces/`](platform/namespaces/) | Local namespace manifest that enforces the Pod Security "restricted" profile |
 | [`platform/tests/`](platform/tests/) | Chart validation script; its fixtures live in `platform/charts/service/tests/fixtures/` |
+| [`platform/argocd/`](platform/argocd/) | Argo CD install overlay, the root project and Application, and the bootstrap script |
+| [`platform/cluster/`](platform/cluster/) | What Argo CD manages from Git: the `staging` namespace, the service project, and the service Applications |
+| [`platform/evidence/`](platform/evidence/) | Reports from lab sessions |
 | [`infra/`](infra/) | GCP bootstrap, Terraform root and modules, and Terraform validation |
 | [`architecture.md`](architecture.md) | Architecture and design decisions |
 | [`pipeline/`](pipeline/) | Cloud Build configuration that tests, builds, scans, and publishes the API image. See its [README](pipeline/README.md) |
@@ -34,7 +38,7 @@ It runs in my personal GCP project `gke-build-proj` as a temporary staging envir
 | Verification service and shared Helm chart | Done |
 | GCP foundation: Terraform, GKE, Artifact Registry, IAM | Done |
 | Image build pipeline: Cloud Build, recorded digests | Done |
-| GitOps deployment: Argo CD from Git | Planned |
+| GitOps deployment: Argo CD from Git | Done |
 | Identity and isolation, admission policies, validation suite, second service, observability and costs, acceptance tests, handoff | Planned |
 
 What works today:
@@ -43,6 +47,7 @@ What works today:
 - **Chart:** deploys one HTTP service with restricted pod security, digest-only images, probes, and rolling updates with zero unavailable pods. A values schema and template checks reject bad input before anything reaches a cluster. I deployed it on Docker Desktop Kubernetes into a namespace that enforces the "restricted" profile.
 - **GCP:** Terraform manages the persistent resources, and a private GKE cluster that I create and remove in each lab session.
 - **Pipeline:** Cloud Build tests, builds, and scans the API image on every pull request. Merges that change the API publish an image tagged with its commit, with provenance, a scan report, and an SBOM; a failed check means nothing is pushed.
+- **GitOps:** Argo CD deploys staging from `main`. Releasing is a pull request that changes one digest, and rolling back is a Git revert that reuses the image already in the registry. In my last session, a release took 1 minute 37 seconds and a rollback 1 minute 57 seconds from merge to healthy, with no unavailable pods; see the [evidence report](platform/evidence/2026-10-03-gitops.md).
 
 Planned changes to the service and chart:
 
@@ -58,7 +63,8 @@ I built and tested the current state with these versions. The Terraform and Goog
 | Tool | Version |
 | --- | --- |
 | Python | 3.14.8 (image and CI) |
-| Helm | 4.3.0 |
+| Helm | 4.2.1 (the version bundled with Argo CD) |
+| Argo CD | 3.5.3 (core install) |
 | kubectl | 1.37.0 |
 | Docker | 29.8.0 |
 | Trivy | 0.74.0 |

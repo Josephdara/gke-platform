@@ -1,6 +1,6 @@
 # Applications
 
-These are the services the platform deploys. Each service has its own README with its interface, configuration, and design. This page shows you how to test the Python service and build and run its container image. To deploy an image to Kubernetes, see the [platform README](../platform/README.md).
+These are the services the platform deploys. Each service has its own README with its interface, configuration, and design. This page covers testing the Python service and building and running its container image. To deploy an image to Kubernetes, see the [platform README](../platform/README.md).
 
 | Service | Contents |
 | --- | --- |
@@ -17,11 +17,11 @@ python3 -m venv .venv
 .venv/bin/python -m pip check
 ```
 
-All 44 tests pass for me. The process tests start the real server and send it SIGTERM; they are skipped if your environment does not allow binding a local socket.
+All 44 tests pass for me. The process tests start the real server and send it SIGTERM; they are skipped where the environment does not allow binding a local socket.
 
 ## Building and running the container image
 
-You don't need to build the image for GKE yourself: merges to `main` that change the API build, scan, and publish it. See the [pipeline README](../pipeline/README.md). The commands below are for trying the image locally.
+The pipeline builds the GKE image: merges to `main` that change the API build, scan, and publish it. See the [pipeline README](../pipeline/README.md). The commands below are for trying the image locally.
 
 Run these from the repository root.
 
