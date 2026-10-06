@@ -1,0 +1,86 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: application-policies
+policies:
+  - ../../cluster/policies/require-approved-registry.yaml
+  - ../../cluster/policies/require-image-digest.yaml
+  - ../../cluster/policies/require-resources.yaml
+  - ../../cluster/policies/require-labels.yaml
+  - ../../cluster/policies/require-service-account.yaml
+  - ../../cluster/policies/restrict-pod-security.yaml
+  - ../../cluster/policies/require-read-only-root-filesystem.yaml
+resources:
+  - deployments.yaml
+variables: values.yaml
+results:
+  - policy: require-approved-registry
+    resources: [staging-platform-verification-api]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-approved-registry
+    resources: [bad-registry]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-image-digest
+    resources: [staging-platform-verification-api]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-image-digest
+    resources: [bad-digest]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-resources
+    resources: [staging-platform-verification-api]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-resources
+    resources: [bad-resources]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-labels
+    resources: [staging-platform-verification-api]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-labels
+    resources: [bad-labels]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-service-account
+    resources: [staging-platform-verification-api]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-service-account
+    resources: [bad-service-account]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: restrict-pod-security
+    resources: [staging-platform-verification-api]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: restrict-pod-security
+    resources: [bad-pod-security]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-read-only-root-filesystem
+    resources: [staging-platform-verification-api]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-read-only-root-filesystem
+    resources: [bad-read-only-root]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true

@@ -9,9 +9,11 @@ resources:
 
 images:
   - name: quay.io/argoproj/argocd
+    newName: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/argoproj/argocd
     newTag: v3.5.3
     digest: sha256:dd3f47d5a5e4da563a7a398506e892481b358a7cec50abdf320c71aa55904bfa
   - name: public.ecr.aws/docker/library/redis
+    newName: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/library/redis
     newTag: 8.2.3-alpine
     digest: sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba
 

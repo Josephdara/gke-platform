@@ -4,6 +4,8 @@ metadata:
   name: argocd-cm
 data:
   timeout.reconciliation: 180s
+  resource.compareoptions: |
+    ignoreAggregatedRoles: true
   resource.customizations.health.argoproj.io_Application: |
     hs = {}
     hs.status = "Progressing"

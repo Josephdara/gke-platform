@@ -1,0 +1,29 @@
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-resources
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  validationActions: [Audit]
+  failurePolicy: Fail
+  autogen:
+    podControllers:
+      controllers: [deployments, statefulsets, daemonsets, jobs, cronjobs]
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [staging]
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: containers
+      expression: "object.spec.containers + object.spec.?initContainers.orValue([])"
+  validations:
+    - expression: "variables.containers.all(c, ['cpu', 'memory'].all(r, r in c.?resources.?requests.orValue({}) && r in c.?resources.?limits.orValue({})))"
+      message: "Every container must set resources.requests.cpu, resources.requests.memory, resources.limits.cpu, and resources.limits.memory."

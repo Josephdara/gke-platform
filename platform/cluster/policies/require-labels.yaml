@@ -1,0 +1,26 @@
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-labels
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  validationActions: [Audit]
+  failurePolicy: Fail
+  autogen:
+    podControllers:
+      controllers: [deployments, statefulsets, daemonsets, jobs, cronjobs]
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [staging]
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  validations:
+    - expression: "['project', 'environment', 'service', 'owner'].all(l, l in object.metadata.?labels.orValue({}))"
+      message: "metadata.labels must include project, environment, service, and owner. Add the missing labels."
