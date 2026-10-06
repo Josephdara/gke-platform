@@ -48,10 +48,12 @@ The root Application applies these to `staging` before any service:
 | ResourceQuota `staging-quota` | At most 1 CPU and 1Gi of requests, 3 CPU and 2Gi of limits, and 10 Pods |
 | LimitRange `staging-limits` | Containers without settings get requests of 50m and 64Mi and limits of 200m and 128Mi; no container may exceed 500m and 256Mi |
 | NetworkPolicy `staging-default-deny` | Blocks all traffic to and from every Pod |
-| NetworkPolicy `staging-allow-dns` | Allows DNS lookups to cluster DNS |
+| NetworkPolicy `staging-allow-dns` | Allows DNS on port 53 to Pods in `kube-system`, which covers kube-dns and NodeLocal DNSCache |
 | Role `staging-developer` and RoleBinding `staging-developers` | Read-only access to Pods, logs, events, Deployments, Services, and ConfigMaps for the group `staging-developers` |
 
 Nothing reaches a service's Pods until a policy opens it. The kubelet's probes still work, because traffic from a Pod's own node is always allowed. Real developer access needs Google Groups for RBAC and the IAM Kubernetes Engine Cluster Viewer role; with Google Groups, the binding's subject becomes the group's email address.
+
+Session 4 tested each of these; see the [evidence report](evidence/2026-10-06-isolation.md).
 
 Service Applications sync automatically, revert manual changes in the cluster (self-heal), and delete what is removed from Git (prune). The root also syncs automatically and self-heals, but never prunes, so a mistaken commit cannot delete the `staging` namespace.
 

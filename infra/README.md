@@ -264,3 +264,4 @@ I used these versions:
 | Budget, billing export dataset, and billing export (console) | Done |
 | Lab network and cluster | Created and deleted in each session |
 | Argo CD on the lab cluster | Verified in session 3; see the [evidence report](../platform/evidence/2026-10-03-gitops.md) |
+| Workload secrets, per-service grants, and Secret Manager audit logs | Verified in session 4; see the [evidence report](../platform/evidence/2026-10-06-isolation.md) |
