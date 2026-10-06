@@ -1,5 +1,6 @@
 {{- include "service.validateResources" . }}
 {{- include "service.validateSecrets" . }}
+{{- include "service.validateReplicas" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,7 +9,6 @@ metadata:
   labels: 
     {{- include "service.labels" . | nindent 4 }}
 spec: 
-  replicas: {{ .Values.replicaCount}}
   revisionHistoryLimit: 3
   selector:
     matchLabels:

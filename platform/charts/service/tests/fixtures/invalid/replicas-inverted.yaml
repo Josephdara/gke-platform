@@ -1,0 +1,4 @@
+# expect: replicas.min (3) is above replicas.max (2)
+replicas:
+  min: 3
+  max: 2

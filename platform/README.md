@@ -34,13 +34,13 @@ I install Argo CD 3.5.3 as the **core** install: the application controller, rep
 | Root project `platform` and root Application `staging-platform`                                   | `argocd/root/`                                                          | `bootstrap.sh`                          |
 | Kyverno | `kyverno/`, through `cluster/controllers/kyverno.yaml` | The `kyverno` Application (project `platform-controllers`), from `main` |
 | Admission policies | `cluster/policies/` | The root Application, from `main` |
-| `staging` namespace (Pod Security "restricted") and its guardrails, `staging-services` project, service Applications | `cluster/`                                                              | The root Application, from `main`       |
-| Each service's Deployment, Service, ConfigMap, ServiceAccount, and SecretProviderClass (when it has secrets) | `charts/service/` with `services/<service>/` values                     | That service's Application, from `main` |
+| `staging` namespace (Pod Security "restricted"), its guardrails, and its Gateway, `staging-services` project, service Applications | `cluster/`                                                              | The root Application, from `main`       |
+| Each service's Deployment, Service, ConfigMap, ServiceAccount, HorizontalPodAutoscaler, and PodDisruptionBudget, plus its SecretProviderClass, HTTPRoute, and NetworkPolicy when configured | `charts/service/` with `services/<service>/` values                     | That service's Application, from `main` |
 
 
 The overlay pins the upstream `core-install.yaml` to tag `v3.5.3`, pins every Argo CD and Redis image by digest and pulls it from the `staging-mirror` repository, adds resource requests, sets the 180-second polling interval, and adds a health check for Applications so the root waits until each service is healthy.
 
-The projects are guardrails. `platform` may deploy only to `argocd` and `staging`, and may create only Namespaces, ValidatingPolicies, AppProjects, Applications, ResourceQuotas, LimitRanges, NetworkPolicies, Roles, and RoleBindings; `bootstrap.sh` applies it, so a change takes effect at the next bootstrap. `staging-services` may only deploy to `staging`, may create no cluster-wide objects, and allows only ServiceAccount, ConfigMap, Service, Deployment, and SecretProviderClass. `platform-controllers` may deploy only to `kyverno`, plus the CustomResourceDefinitions, ClusterRoles, ClusterRoleBindings, and Namespace that Kyverno's manifest contains. Argo CD refuses anything else; add a kind here when the chart starts rendering it.
+The projects are guardrails. `platform` may deploy only to `argocd` and `staging`, and may create only Namespaces, ValidatingPolicies, AppProjects, Applications, ResourceQuotas, LimitRanges, NetworkPolicies, Roles, RoleBindings, and Gateways; `bootstrap.sh` applies it, so a change takes effect at the next bootstrap. `staging-services` may only deploy to `staging`, may create no cluster-wide objects, and allows only ServiceAccount, ConfigMap, Service, Deployment, SecretProviderClass, HorizontalPodAutoscaler, PodDisruptionBudget, NetworkPolicy, and HTTPRoute. `platform-controllers` may deploy only to `kyverno`, plus the CustomResourceDefinitions, ClusterRoles, ClusterRoleBindings, and Namespace that Kyverno's manifest contains. Argo CD refuses anything else; add a kind here when the chart starts rendering it.
 
 ### Staging guardrails
 
@@ -77,6 +77,14 @@ Each rejection message names the field and the fix. The policies select the `sta
 `platform/tests/policies/` holds the fixtures: the chart's staging Deployment, which passes every policy, and seven copies that each break exactly one. Check 6 of the [validation script](#validating-the-chart) runs them with `kyverno test`. A test Pod in `staging` must meet every policy, including the labels and the service's own service account.
 
 To upgrade Kyverno, copy the new release's five images into `staging-mirror` with `crane copy`, by digest, and confirm `crane digest` prints the same digest for each copy. Then change the release URL, `newTag`, and the five digests in `kyverno/kustomization.yaml`, and run the validation script.
+
+### External access
+
+The root Application owns one Gateway, `staging-gateway` in `staging`: a global external Application Load Balancer (`gke-l7-global-external-managed`) with one HTTPS listener on port 443. Its address is the static IP `staging-gateway-ip`, and its certificate comes from the Certificate Manager map `staging-cert-map`; Terraform creates both, with the A record, as described in the [infrastructure README](../infra/README.md). A service is exposed when its values set `httpRoute.hostname`; the API's staging values use `api.staging.gke.josephdara.com`.
+
+The load balancer reaches Pods directly from Google's ranges `130.211.0.0/22` and `35.191.0.0/16`, which also carry its health checks on `/`. The service's NetworkPolicy admits only those ranges, so other Pods still cannot reach it.
+
+GKE builds the load balancer from the Gateway, outside Terraform. Delete the Gateway and wait for the load balancer to disappear before removing the lab, as described in [End a session](../infra/README.md#end-a-session); otherwise its resources are left behind and keep billing.
 
 Service Applications sync automatically, revert manual changes in the cluster (self-heal), and delete what is removed from Git (prune). The root also syncs automatically and self-heals, but never prunes, so a mistaken commit cannot delete the `staging` namespace.
 
@@ -323,13 +331,13 @@ What it checks:
 | 6   | Policy fixtures | `kyverno test platform/tests/policies` gets every expected pass and fail |
 
 
-The six fixtures cover each way the chart rejects input: a missing field (`missing-owner`), a malformed value (`short-digest`), an unknown field (`unknown-key`), a name over 63 characters (`name-too-long`), a request above its limit (`cpu-request-above-limit`), and a secret variable that does not end in `_FILE` (`secret-env-not-file`).
+The seven fixtures cover each way the chart rejects input: a missing field (`missing-owner`), a malformed value (`short-digest`), an unknown field (`unknown-key`), a name over 63 characters (`name-too-long`), a request above its limit (`cpu-request-above-limit`), a secret variable that does not end in `_FILE` (`secret-env-not-file`), and replica bounds the wrong way round (`replicas-inverted`).
 
 Exit codes: `0` when every check passes, `1` when a check fails, and `2` when a tool is missing.
 
 The Kubernetes schemas are pinned to version 1.36.4 (the `KUBERNETES_VERSION` variable in the script), matching the GKE cluster from my first lab session. The first run downloads the schemas into `~/.cache/kubeconform`, so it needs internet access; later runs use the cache. Set `KUBECONFORM_CACHE` to use a different directory.
 
-kubeconform skips SecretProviderClass: it has no schema for it, and the secret list inside it is a YAML string that no schema could check. Argo CD's sync and the Pod's secret mount check it in the cluster.
+kubeconform skips SecretProviderClass and HTTPRoute, because it has no schema for these custom resources; the secret list inside a SecretProviderClass is a YAML string that no schema could check anyway. Argo CD's sync checks both in the cluster.
 
 To add an invalid fixture, create a small values file in `platform/charts/service/tests/fixtures/invalid/` that changes one input, and make its first line `# expect: <text the error must contain>`. Match a short, stable part of the message, such as the field path.
 
@@ -367,7 +375,7 @@ Add `--show-only templates/service.yaml` to render one template. Rendering does 
 
 ## Chart inputs
 
-[`charts/service/values.schema.json`](charts/service/values.schema.json) enforces these rules during lint and rendering. The chart's templates check the combined name length, that requests are not above limits, and that no secret `name` or `env` repeats, during rendering.
+[`charts/service/values.schema.json`](charts/service/values.schema.json) enforces these rules during lint and rendering. The chart's templates check the combined name length, that requests are not above limits, that `replicas.min` is not above `replicas.max`, and that no secret `name` or `env` repeats, during rendering.
 
 
 | Key                                                    | Required      | Rule                                                         |
@@ -384,10 +392,23 @@ Add `--show-only templates/service.yaml` to render one template. Rendering does 
 | `probes.readiness.path`                                | Yes           | Starts with `/`                                              |
 | `resources.requests.cpu`, `resources.limits.cpu`       | Yes           | Millicores, such as `100m`; requests not above limits        |
 | `resources.requests.memory`, `resources.limits.memory` | Yes           | Mebibytes, such as `128Mi`; requests not above limits        |
-| `replicaCount`                                         | No, default 2 | Integer from 2 to 3                                          |
+| `replicas.min`, `replicas.max` | No, default 2 and 3 | Integers from 2 to 3; min not above max |
+| `httpRoute.hostname` | No | A DNS hostname. Renders an HTTPRoute on the environment's Gateway and a NetworkPolicy that admits only the load balancer |
 | `secrets` | No | Entries with `name`, a Secret Manager secret ID, and `env`, an environment variable ending in `_FILE`; each name and env appears once |
 
 Each secret is mounted read-only at `/var/secrets/<name>` from its latest version, and its `env` variable holds that path, so the value never passes through Git or the ConfigMap. A secret mounts only if Terraform grants it to the service's Kubernetes service account; without the grant, new Pods stay in `ContainerCreating` while the existing Pods keep serving. Set `secrets` in the environment values file, because secret IDs include the environment.
 
+The chart always renders a HorizontalPodAutoscaler that scales on CPU at 70% between `replicas.min` and `replicas.max`, and a PodDisruptionBudget that keeps at least one Pod available during voluntary disruptions such as node drains. The Deployment sets no replica count, so Argo CD never resets the number the autoscaler chose.
+
 
 `environment` and `serviceName` together must produce a name of at most 63 characters. A service image must declare a numeric non-root user, because the chart requires non-root execution without setting a user ID.
+
+## Chart versions
+
+The chart's version is the version of its values interface. A change that breaks existing values files raises the major version.
+
+| Version | Change |
+| --- | --- |
+| 1.0.0 | Breaking: `replicas.min` and `replicas.max` replace `replicaCount`, and a HorizontalPodAutoscaler owns the replica count. Adds a PodDisruptionBudget and the optional `httpRoute` |
+| 0.2.0 | Adds `secrets` |
+| 0.1.0 | First version |

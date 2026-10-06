@@ -23,3 +23,11 @@ spec:
       kind: Deployment
     - group: secrets-store.csi.x-k8s.io
       kind: SecretProviderClass
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
