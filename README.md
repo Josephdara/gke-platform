@@ -39,7 +39,8 @@ It runs in my personal GCP project `gke-build-proj` as a temporary staging envir
 | GCP foundation: Terraform, GKE, Artifact Registry, IAM | Done |
 | Image build pipeline: Cloud Build, recorded digests | Done |
 | GitOps deployment: Argo CD from Git | Done |
-| Identity and isolation, admission policies, validation suite, second service, observability and costs, acceptance tests, handoff | Planned |
+| Identity, secrets, and namespace isolation | Done; DNS re-check pending |
+| Admission policies, validation suite, second service, observability and costs, acceptance tests, handoff | Planned |
 
 What works today:
 
@@ -47,7 +48,8 @@ What works today:
 - **Chart:** deploys one HTTP service with restricted pod security, digest-only images, probes, and rolling updates with zero unavailable pods. A values schema and template checks reject bad input before anything reaches a cluster. I deployed it on Docker Desktop Kubernetes into a namespace that enforces the "restricted" profile.
 - **GCP:** Terraform manages the persistent resources, and a private GKE cluster that I create and remove in each lab session.
 - **Pipeline:** Cloud Build tests, builds, and scans the API image on every pull request. Merges that change the API publish an image tagged with its commit, with provenance, a scan report, and an SBOM; a failed check means nothing is pushed.
-- **GitOps:** Argo CD deploys staging from `main`. Releasing is a pull request that changes one digest, and rolling back is a Git revert that reuses the image already in the registry. In my last session, a release took 1 minute 37 seconds and a rollback 1 minute 57 seconds from merge to healthy, with no unavailable pods; see the [evidence report](platform/evidence/2026-10-03-gitops.md).
+- **GitOps:** Argo CD deploys staging from `main`. Releasing is a pull request that changes one digest, and rolling back is a Git revert that reuses the image already in the registry. In session 3, a release took 1 minute 37 seconds and a rollback 1 minute 57 seconds from merge to healthy, with no unavailable pods; see the [evidence report](platform/evidence/2026-10-03-gitops.md).
+- **Isolation:** each service reads its own Secret Manager secrets through its own Kubernetes service account, and a rotated value reaches it without a restart. The `staging` namespace denies all network traffic except DNS, caps resources with a quota and default limits, and gives developers read-only access. In session 4, every unauthorized secret, Google API, network, and RBAC attempt was refused, and a new secret version reached every pod in 60 seconds; see the [evidence report](platform/evidence/2026-10-06-isolation.md).
 
 Planned changes to the service and chart:
 
