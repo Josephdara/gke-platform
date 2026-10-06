@@ -1,0 +1,903 @@
+# The chart's staging Deployment passes every policy; each bad-* copy breaks exactly one.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: staging-platform-verification-api
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: platform-verification-api
+    app.kubernetes.io/instance: staging-platform-verification-api
+    project: gke-build-proj
+    environment: staging
+    service: platform-verification-api
+    owner: jd
+    app.kubernetes.io/version: sha-4f848fc
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: service-0.2.0
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: platform-verification-api
+      app.kubernetes.io/instance: staging-platform-verification-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: platform-verification-api
+        app.kubernetes.io/instance: staging-platform-verification-api
+        project: gke-build-proj
+        environment: staging
+        service: platform-verification-api
+        owner: jd
+        app.kubernetes.io/version: sha-4f848fc
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: service-0.2.0
+      annotations:
+        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+    spec:
+      serviceAccountName: staging-platform-verification-api
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: platform-verification-api
+        image: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platform-verification-api@sha256:5eefe9ae99fadc5b0837e468a38acd83bcd386a586b3da85d8a1f011caf60aa3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: app-http
+          containerPort: 8080
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: staging-platform-verification-api
+        volumeMounts:
+        - name: secrets
+          mountPath: /var/secrets
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        startupProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 6
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: secrets
+        csi:
+          driver: secrets-store-gke.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: staging-platform-verification-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-registry
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: platform-verification-api
+    app.kubernetes.io/instance: staging-platform-verification-api
+    project: gke-build-proj
+    environment: staging
+    service: platform-verification-api
+    owner: jd
+    app.kubernetes.io/version: sha-4f848fc
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: service-0.2.0
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: platform-verification-api
+      app.kubernetes.io/instance: staging-platform-verification-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: platform-verification-api
+        app.kubernetes.io/instance: staging-platform-verification-api
+        project: gke-build-proj
+        environment: staging
+        service: platform-verification-api
+        owner: jd
+        app.kubernetes.io/version: sha-4f848fc
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: service-0.2.0
+      annotations:
+        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+    spec:
+      serviceAccountName: staging-platform-verification-api
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: platform-verification-api
+        image: docker.io/library/nginx@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: app-http
+          containerPort: 8080
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: staging-platform-verification-api
+        volumeMounts:
+        - name: secrets
+          mountPath: /var/secrets
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        startupProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 6
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: secrets
+        csi:
+          driver: secrets-store-gke.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: staging-platform-verification-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-digest
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: platform-verification-api
+    app.kubernetes.io/instance: staging-platform-verification-api
+    project: gke-build-proj
+    environment: staging
+    service: platform-verification-api
+    owner: jd
+    app.kubernetes.io/version: sha-4f848fc
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: service-0.2.0
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: platform-verification-api
+      app.kubernetes.io/instance: staging-platform-verification-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: platform-verification-api
+        app.kubernetes.io/instance: staging-platform-verification-api
+        project: gke-build-proj
+        environment: staging
+        service: platform-verification-api
+        owner: jd
+        app.kubernetes.io/version: sha-4f848fc
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: service-0.2.0
+      annotations:
+        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+    spec:
+      serviceAccountName: staging-platform-verification-api
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: platform-verification-api
+        image: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platform-verification-api:sha-4f848fc
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: app-http
+          containerPort: 8080
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: staging-platform-verification-api
+        volumeMounts:
+        - name: secrets
+          mountPath: /var/secrets
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        startupProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 6
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: secrets
+        csi:
+          driver: secrets-store-gke.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: staging-platform-verification-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-resources
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: platform-verification-api
+    app.kubernetes.io/instance: staging-platform-verification-api
+    project: gke-build-proj
+    environment: staging
+    service: platform-verification-api
+    owner: jd
+    app.kubernetes.io/version: sha-4f848fc
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: service-0.2.0
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: platform-verification-api
+      app.kubernetes.io/instance: staging-platform-verification-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: platform-verification-api
+        app.kubernetes.io/instance: staging-platform-verification-api
+        project: gke-build-proj
+        environment: staging
+        service: platform-verification-api
+        owner: jd
+        app.kubernetes.io/version: sha-4f848fc
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: service-0.2.0
+      annotations:
+        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+    spec:
+      serviceAccountName: staging-platform-verification-api
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: platform-verification-api
+        image: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platform-verification-api@sha256:5eefe9ae99fadc5b0837e468a38acd83bcd386a586b3da85d8a1f011caf60aa3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: app-http
+          containerPort: 8080
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: staging-platform-verification-api
+        volumeMounts:
+        - name: secrets
+          mountPath: /var/secrets
+          readOnly: true
+        startupProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 6
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: secrets
+        csi:
+          driver: secrets-store-gke.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: staging-platform-verification-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-labels
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: platform-verification-api
+    app.kubernetes.io/instance: staging-platform-verification-api
+    project: gke-build-proj
+    environment: staging
+    service: platform-verification-api
+    app.kubernetes.io/version: sha-4f848fc
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: service-0.2.0
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: platform-verification-api
+      app.kubernetes.io/instance: staging-platform-verification-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: platform-verification-api
+        app.kubernetes.io/instance: staging-platform-verification-api
+        project: gke-build-proj
+        environment: staging
+        service: platform-verification-api
+        app.kubernetes.io/version: sha-4f848fc
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: service-0.2.0
+      annotations:
+        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+    spec:
+      serviceAccountName: staging-platform-verification-api
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: platform-verification-api
+        image: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platform-verification-api@sha256:5eefe9ae99fadc5b0837e468a38acd83bcd386a586b3da85d8a1f011caf60aa3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: app-http
+          containerPort: 8080
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: staging-platform-verification-api
+        volumeMounts:
+        - name: secrets
+          mountPath: /var/secrets
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        startupProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 6
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: secrets
+        csi:
+          driver: secrets-store-gke.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: staging-platform-verification-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-service-account
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: platform-verification-api
+    app.kubernetes.io/instance: staging-platform-verification-api
+    project: gke-build-proj
+    environment: staging
+    service: platform-verification-api
+    owner: jd
+    app.kubernetes.io/version: sha-4f848fc
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: service-0.2.0
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: platform-verification-api
+      app.kubernetes.io/instance: staging-platform-verification-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: platform-verification-api
+        app.kubernetes.io/instance: staging-platform-verification-api
+        project: gke-build-proj
+        environment: staging
+        service: platform-verification-api
+        owner: jd
+        app.kubernetes.io/version: sha-4f848fc
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: service-0.2.0
+      annotations:
+        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+    spec:
+      serviceAccountName: default
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: platform-verification-api
+        image: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platform-verification-api@sha256:5eefe9ae99fadc5b0837e468a38acd83bcd386a586b3da85d8a1f011caf60aa3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: app-http
+          containerPort: 8080
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: staging-platform-verification-api
+        volumeMounts:
+        - name: secrets
+          mountPath: /var/secrets
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        startupProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 6
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: secrets
+        csi:
+          driver: secrets-store-gke.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: staging-platform-verification-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-pod-security
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: platform-verification-api
+    app.kubernetes.io/instance: staging-platform-verification-api
+    project: gke-build-proj
+    environment: staging
+    service: platform-verification-api
+    owner: jd
+    app.kubernetes.io/version: sha-4f848fc
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: service-0.2.0
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: platform-verification-api
+      app.kubernetes.io/instance: staging-platform-verification-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: platform-verification-api
+        app.kubernetes.io/instance: staging-platform-verification-api
+        project: gke-build-proj
+        environment: staging
+        service: platform-verification-api
+        owner: jd
+        app.kubernetes.io/version: sha-4f848fc
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: service-0.2.0
+      annotations:
+        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+    spec:
+      serviceAccountName: staging-platform-verification-api
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: platform-verification-api
+        image: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platform-verification-api@sha256:5eefe9ae99fadc5b0837e468a38acd83bcd386a586b3da85d8a1f011caf60aa3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: app-http
+          containerPort: 8080
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: staging-platform-verification-api
+        volumeMounts:
+        - name: secrets
+          mountPath: /var/secrets
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        startupProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 6
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        securityContext:
+          allowPrivilegeEscalation: true
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: secrets
+        csi:
+          driver: secrets-store-gke.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: staging-platform-verification-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-read-only-root
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: platform-verification-api
+    app.kubernetes.io/instance: staging-platform-verification-api
+    project: gke-build-proj
+    environment: staging
+    service: platform-verification-api
+    owner: jd
+    app.kubernetes.io/version: sha-4f848fc
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: service-0.2.0
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: platform-verification-api
+      app.kubernetes.io/instance: staging-platform-verification-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: platform-verification-api
+        app.kubernetes.io/instance: staging-platform-verification-api
+        project: gke-build-proj
+        environment: staging
+        service: platform-verification-api
+        owner: jd
+        app.kubernetes.io/version: sha-4f848fc
+        app.kubernetes.io/managed-by: Helm
+        helm.sh/chart: service-0.2.0
+      annotations:
+        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+    spec:
+      serviceAccountName: staging-platform-verification-api
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: platform-verification-api
+        image: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platform-verification-api@sha256:5eefe9ae99fadc5b0837e468a38acd83bcd386a586b3da85d8a1f011caf60aa3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: app-http
+          containerPort: 8080
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: staging-platform-verification-api
+        volumeMounts:
+        - name: secrets
+          mountPath: /var/secrets
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        startupProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 6
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: app-http
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+          successThreshold: 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: secrets
+        csi:
+          driver: secrets-store-gke.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: staging-platform-verification-api

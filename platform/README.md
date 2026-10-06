@@ -10,9 +10,10 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | [`charts/service/`](charts/service/)                                         | Shared Helm chart that deploys one HTTP service                                                                             |
 | [`services/platform-verification-api/`](services/platform-verification-api/) | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml`    |
 | [`namespaces/`](namespaces/)                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                |
-| [`tests/`](tests/)                                                           | Chart validation script; its fixtures live in `charts/service/tests/fixtures/`                                              |
+| [`tests/`](tests/)                                                           | Chart validation script; its fixtures live in `charts/service/tests/fixtures/`, and the policy fixtures in `tests/policies/` |
 | [`argocd/`](argocd/)                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
-| [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` namespace and its guardrails, the `staging-services` project, and one Application per service |
+| [`kyverno/`](kyverno/) | Kyverno install overlay: the pinned upstream manifest with images from the mirror repository |
+| [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` namespace and its guardrails, the admission policies, the projects, the Kyverno Application, and one Application per service |
 | [`evidence/`](evidence/)                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results                                     |
 
 
@@ -31,13 +32,15 @@ I install Argo CD 3.5.3 as the **core** install: the application controller, rep
 | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------- |
 | Argo CD and its settings                                                                          | `argocd/kustomization.yaml`, `argocd/namespace.yaml`, `argocd/patches/` | `bootstrap.sh`                          |
 | Root project `platform` and root Application `staging-platform`                                   | `argocd/root/`                                                          | `bootstrap.sh`                          |
+| Kyverno | `kyverno/`, through `cluster/controllers/kyverno.yaml` | The `kyverno` Application (project `platform-controllers`), from `main` |
+| Admission policies | `cluster/policies/` | The root Application, from `main` |
 | `staging` namespace (Pod Security "restricted") and its guardrails, `staging-services` project, service Applications | `cluster/`                                                              | The root Application, from `main`       |
 | Each service's Deployment, Service, ConfigMap, ServiceAccount, and SecretProviderClass (when it has secrets) | `charts/service/` with `services/<service>/` values                     | That service's Application, from `main` |
 
 
-The overlay pins the upstream `core-install.yaml` to tag `v3.5.3`, pins every Argo CD and Redis image by digest, adds resource requests, sets the 180-second polling interval, and adds a health check for Applications so the root waits until each service is healthy.
+The overlay pins the upstream `core-install.yaml` to tag `v3.5.3`, pins every Argo CD and Redis image by digest and pulls it from the `staging-mirror` repository, adds resource requests, sets the 180-second polling interval, and adds a health check for Applications so the root waits until each service is healthy.
 
-The two projects are guardrails. `platform` may deploy only to `argocd` and `staging`, and may create only Namespaces, AppProjects, Applications, ResourceQuotas, LimitRanges, NetworkPolicies, Roles, and RoleBindings; `bootstrap.sh` applies it, so a change takes effect at the next bootstrap. `staging-services` may only deploy to `staging`, may create no cluster-wide objects, and allows only ServiceAccount, ConfigMap, Service, Deployment, and SecretProviderClass. Argo CD refuses anything else; add a kind here when the chart starts rendering it.
+The projects are guardrails. `platform` may deploy only to `argocd` and `staging`, and may create only Namespaces, ValidatingPolicies, AppProjects, Applications, ResourceQuotas, LimitRanges, NetworkPolicies, Roles, and RoleBindings; `bootstrap.sh` applies it, so a change takes effect at the next bootstrap. `staging-services` may only deploy to `staging`, may create no cluster-wide objects, and allows only ServiceAccount, ConfigMap, Service, Deployment, and SecretProviderClass. `platform-controllers` may deploy only to `kyverno`, plus the CustomResourceDefinitions, ClusterRoles, ClusterRoleBindings, and Namespace that Kyverno's manifest contains. Argo CD refuses anything else; add a kind here when the chart starts rendering it.
 
 ### Staging guardrails
 
@@ -54,6 +57,26 @@ The root Application applies these to `staging` before any service:
 Nothing reaches a service's Pods until a policy opens it. The kubelet's probes still work, because traffic from a Pod's own node is always allowed. Real developer access needs Google Groups for RBAC and the IAM Kubernetes Engine Cluster Viewer role; with Google Groups, the binding's subject becomes the group's email address.
 
 Session 4 tested each of these; see the [evidence report](evidence/2026-10-06-isolation.md).
+
+### Admission policies
+
+Kyverno 1.19.1 checks every Pod created in `staging`, and every Deployment, StatefulSet, DaemonSet, Job, and CronJob that would create one. Its `kyverno` Application syncs at wave -3 with server-side apply, because Kyverno's CustomResourceDefinitions are too large for client-side apply, and the root waits for it to be healthy before the policies sync at wave -2. The policies are ValidatingPolicies, Kyverno's current policy type; ClusterPolicy is deprecated.
+
+| Policy | Rejects |
+| --- | --- |
+| `require-approved-registry` | Any image outside `us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/` |
+| `require-image-digest` | Any image not pinned by `@sha256:` digest |
+| `require-resources` | A container without CPU and memory requests and limits |
+| `require-labels` | A workload without `project`, `environment`, `service`, and `owner` labels |
+| `require-service-account` | A service account other than `<environment>-<service>` |
+| `restrict-pod-security` | Host network, PID, or IPC; hostPath volumes; privileged containers; privilege escalation; capabilities not dropped, or added; running as root; no seccomp profile |
+| `require-read-only-root-filesystem` | A writable root filesystem |
+
+Each rejection message names the field and the fix. The policies select the `staging` namespace by name, so Argo CD, Kyverno, and GKE's system namespaces are never checked. They fail closed: if Kyverno is unavailable, Pods in `staging` are refused rather than admitted unchecked. They start in Audit mode, which records violations in policy reports without blocking, and switch to Deny once a session shows the running workloads pass.
+
+`platform/tests/policies/` holds the fixtures: the chart's staging Deployment, which passes every policy, and seven copies that each break exactly one. Check 6 of the [validation script](#validating-the-chart) runs them with `kyverno test`. A test Pod in `staging` must meet every policy, including the labels and the service's own service account.
+
+To upgrade Kyverno, copy the new release's five images into `staging-mirror` with `crane copy`, by digest, and confirm `crane digest` prints the same digest for each copy. Then change the release URL, `newTag`, and the five digests in `kyverno/kustomization.yaml`, and run the validation script.
 
 Service Applications sync automatically, revert manual changes in the cluster (self-heal), and delete what is removed from Git (prune). The root also syncs automatically and self-heals, but never prunes, so a mistaken commit cannot delete the `staging` namespace.
 
@@ -104,7 +127,7 @@ Before you remove the lab, turn off automated sync on the root Application first
 
 ### Changing Argo CD
 
-- **Upgrading:** change the tag in the resource URL, `newTag`, and both digests in `argocd/kustomization.yaml`. If the new release bundles a different Helm version, check that it renders the chart identically before switching, and update your local Helm. Run `kubectl kustomize platform/argocd` and check the patches still apply.
+- **Upgrading:** copy the new Argo CD and Redis images into `staging-mirror` with `crane copy`, by digest, then change the tag in the resource URL, `newTag`, and both digests in `argocd/kustomization.yaml`. If the new release bundles a different Helm version, check that it renders the chart identically before switching, and update your local Helm. Run `kubectl kustomize platform/argocd` and check the patches still apply.
 - **Settings:** edit `argocd/patches/`. The bootstrap applies them, not Argo CD, so rerun the bootstrap after merging.
 - **Adding a service:** add an Application file in `cluster/apps/`, pointing at the shared chart and the service's values. The root creates it after the merge.
 
@@ -285,7 +308,7 @@ One command runs the application tests and every chart check, and prints `PASS` 
 platform/tests/validate-chart.sh
 ```
 
-You need Helm, kubeconform (`brew install kubeconform`), and the application's virtual environment from [Testing the Python service](../apps/README.md#testing-the-python-service). The script runs from any directory in the repository.
+You need Helm, kubeconform (`brew install kubeconform`), the Kyverno CLI (`brew install kyverno`), and the application's virtual environment from [Testing the Python service](../apps/README.md#testing-the-python-service). The script runs from any directory in the repository.
 
 What it checks:
 
@@ -297,6 +320,7 @@ What it checks:
 | 3   | Local           | `values.yaml` + `values-local.yaml` renders and passes kubeconform in strict mode                                                                                                   |
 | 4   | Invalid inputs  | Every file in `platform/charts/service/tests/fixtures/invalid/`, layered on the staging configuration, fails to render with the text on its first line. A failure names the fixture |
 | 5   | Wrong namespace | Rendering into `default` is refused                                                                                                                                                 |
+| 6   | Policy fixtures | `kyverno test platform/tests/policies` gets every expected pass and fail |
 
 
 The six fixtures cover each way the chart rejects input: a missing field (`missing-owner`), a malformed value (`short-digest`), an unknown field (`unknown-key`), a name over 63 characters (`name-too-long`), a request above its limit (`cpu-request-above-limit`), and a secret variable that does not end in `_FILE` (`secret-env-not-file`).
@@ -312,7 +336,7 @@ To add an invalid fixture, create a small values file in `platform/charts/servic
 A passing run ends with:
 
 ```text
-5 passed, 0 failed
+6 passed, 0 failed
 ```
 
 

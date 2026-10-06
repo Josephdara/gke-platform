@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Validates the API tests and the shared service chart: rendering with
-# Kubernetes schema checks, and invalid inputs that must fail for the
-# expected reason. Usage: platform/tests/validate-chart.sh
+# Kubernetes schema checks, invalid inputs that must fail for the expected
+# reason, and the admission policy fixtures. Usage: platform/tests/validate-chart.sh
 # Exit codes: 0 all checks passed, 1 a check failed, 2 setup problem.
 set -euo pipefail
 
@@ -14,7 +14,7 @@ APP=apps/platform-verification-api
 KUBERNETES_VERSION=1.36.4
 KUBECONFORM_CACHE=${KUBECONFORM_CACHE:-$HOME/.cache/kubeconform}
 
-for tool in helm kubeconform; do
+for tool in helm kubeconform kyverno; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "Missing $tool. Install it with: brew install $tool" >&2
     exit 2
@@ -34,7 +34,7 @@ fail() {
   if [ -n "${2:-}" ]; then sed 's/^/      /' "$2" | tail -n 20; fi
 }
 
-echo "helm $(helm version --short), kubeconform $(kubeconform -v), Kubernetes schemas $KUBERNETES_VERSION"
+echo "helm $(helm version --short), kubeconform $(kubeconform -v), kyverno $(kyverno version | sed -n 's/^Version: //p'), Kubernetes schemas $KUBERNETES_VERSION"
 echo
 
 # 1. Application tests.
@@ -108,6 +108,13 @@ elif [ "$reason" = "rendered, but must fail" ]; then
   fail "wrong namespace: $reason"
 else
   fail "wrong namespace: $reason" "$WORK/invalid.out"
+fi
+
+# 6. Each policy fixture must pass or fail as platform/tests/policies/kyverno-test.yaml expects.
+if kyverno test platform/tests/policies > "$WORK/kyverno.log" 2>&1; then
+  pass "policy fixtures: $(grep -o '[0-9]* tests passed' "$WORK/kyverno.log")"
+else
+  fail "policy fixtures" "$WORK/kyverno.log"
 fi
 
 echo

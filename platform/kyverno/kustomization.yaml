@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - https://github.com/kyverno/kyverno/releases/download/v1.19.1/install.yaml
+
+images:
+  - name: reg.kyverno.io/kyverno/kyverno
+    newName: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/kyverno/kyverno
+    newTag: v1.19.1
+    digest: sha256:b31d8511ae5fd6010e2a01ea72ebae08eb82fa51d91af14a1d9fe989949b4edb
+  - name: reg.kyverno.io/kyverno/kyvernopre
+    newName: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/kyverno/kyvernopre
+    newTag: v1.19.1
+    digest: sha256:c25c47461f06f2845a48c319ae86fbbc1730a7b9ed5b701889c9dc1f9ee94b09
+  - name: reg.kyverno.io/kyverno/background-controller
+    newName: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/kyverno/background-controller
+    newTag: v1.19.1
+    digest: sha256:8f1e9143373a27578cafc2d28d2c66ba0926c63b4c77e63de8d2fdd4a122859f
+  - name: reg.kyverno.io/kyverno/cleanup-controller
+    newName: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/kyverno/cleanup-controller
+    newTag: v1.19.1
+    digest: sha256:67a48e62a8d8f8120c86914ff822b90017c54054c7b64ef8a1555645e9d9761e
+  - name: reg.kyverno.io/kyverno/reports-controller
+    newName: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/kyverno/reports-controller
+    newTag: v1.19.1
+    digest: sha256:c0eee97b9b44a0dd35805d56b358fa52548480f79d4944602b9609538eccd64c
+
+patches:
+  - path: patches/namespace.yaml

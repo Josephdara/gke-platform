@@ -1,0 +1,41 @@
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-pod-security
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  validationActions: [Audit]
+  failurePolicy: Fail
+  autogen:
+    podControllers:
+      controllers: [deployments, statefulsets, daemonsets, jobs, cronjobs]
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [staging]
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: containers
+      expression: "object.spec.containers + object.spec.?initContainers.orValue([])"
+  validations:
+    - expression: "!object.spec.?hostNetwork.orValue(false) && !object.spec.?hostPID.orValue(false) && !object.spec.?hostIPC.orValue(false)"
+      message: "spec.hostNetwork, spec.hostPID, and spec.hostIPC must be false or unset."
+    - expression: "object.spec.?volumes.orValue([]).all(v, !has(v.hostPath))"
+      message: "spec.volumes must not use hostPath. Use an emptyDir, ConfigMap, or CSI volume instead."
+    - expression: "variables.containers.all(c, !c.?securityContext.?privileged.orValue(false))"
+      message: "securityContext.privileged must be false or unset on every container."
+    - expression: "variables.containers.all(c, c.?securityContext.?allowPrivilegeEscalation.orValue(true) == false)"
+      message: "securityContext.allowPrivilegeEscalation must be false on every container."
+    - expression: "variables.containers.all(c, 'ALL' in c.?securityContext.?capabilities.?drop.orValue([]) && c.?securityContext.?capabilities.?add.orValue([]).size() == 0)"
+      message: "securityContext.capabilities.drop must include ALL, and capabilities.add must be empty, on every container."
+    - expression: "variables.containers.all(c, c.?securityContext.?runAsNonRoot.orValue(object.spec.?securityContext.?runAsNonRoot.orValue(false)) == true)"
+      message: "runAsNonRoot must be true, in spec.securityContext or in each container's securityContext."
+    - expression: "variables.containers.all(c, c.?securityContext.?seccompProfile.?type.orValue(object.spec.?securityContext.?seccompProfile.?type.orValue('')) in ['RuntimeDefault', 'Localhost'])"
+      message: "seccompProfile.type must be RuntimeDefault or Localhost, in spec.securityContext or in each container's securityContext."
