@@ -9,3 +9,6 @@ releaseVersion: "sha-4f848fc"
 secrets:
   - name: staging-platform-verification-api-demo
     env: SECRET_FILE
+
+httpRoute:
+  hostname: api.staging.gke.josephdara.com

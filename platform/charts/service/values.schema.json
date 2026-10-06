@@ -67,11 +67,24 @@
         "limits": { "$ref": "#/$defs/computeResources" }
       }
     },
-    "replicaCount": {
-      "description": "Number of pods. Defaults to 2 in the chart.",
-      "type": "integer",
-      "minimum": 2,
-      "maximum": 3
+    "replicas": {
+      "description": "Replica bounds for the HorizontalPodAutoscaler, which scales on CPU at 70%. Defaults to 2 and 3 in the chart.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "integer", "minimum": 2, "maximum": 3 },
+        "max": { "type": "integer", "minimum": 2, "maximum": 3 }
+      }
+    },
+    "httpRoute": {
+      "description": "Exposes the service at this hostname through the environment's Gateway, and admits only the load balancer's source ranges to its Pods.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostname"],
+      "properties": {
+        "hostname": { "type": "string", "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?\\.)+[a-z]{2,63}$" }
+      }
     },
     "secrets": {
       "description": "Secret Manager secrets mounted read-only. A secret mounts only if Terraform grants it to this service's KSA.",

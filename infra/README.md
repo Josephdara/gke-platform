@@ -94,7 +94,19 @@ Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `k
    kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n argocd patch applications.argoproj.io staging-platform-verification-api --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
    ```
 
-   Then delete any Kubernetes objects that create cloud resources, such as Gateways, while the cluster still exists. Otherwise their load balancers are left behind. Both of these must print nothing:
+   Then delete the objects that create cloud resources while the cluster still exists, starting with the HTTPRoute and the Gateway. Otherwise their load balancer is left behind:
+
+   ```bash
+   kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n staging delete httproute,gateway --all
+   ```
+
+   Wait until GKE has removed the load balancer, which can take a few minutes. Every list must be empty:
+
+   ```bash
+   for r in "compute forwarding-rules" "compute target-https-proxies" "compute url-maps" "compute backend-services" "compute health-checks"; do echo "== $r"; gcloud ${=r} list --project=gke-build-proj --format="value(name)"; done
+   ```
+
+   Both of these must print nothing:
 
    ```bash
    kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster get svc -A --field-selector spec.type=LoadBalancer --no-headers
@@ -119,7 +131,7 @@ Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `k
 4. Check that no billable lab resources remain. Every list must be empty, except `compute networks` and `compute firewall-rules`, which must show nothing from `staging-vpc`. The `${=r}` splits each entry into words in zsh; in bash, use `$r`:
 
    ```bash
-   for r in "container clusters" "compute instances" "compute disks" "compute addresses" "compute forwarding-rules" "compute network-endpoint-groups" "compute routers" "compute networks" "compute firewall-rules"; do echo "== $r"; gcloud ${=r} list --project=gke-build-proj --format="value(name)"; done
+   for r in "container clusters" "compute instances" "compute disks" "compute addresses" "compute forwarding-rules" "compute target-https-proxies" "compute url-maps" "compute backend-services" "compute health-checks" "compute network-endpoint-groups" "compute routers" "compute networks" "compute firewall-rules"; do echo "== $r"; gcloud ${=r} list --project=gke-build-proj --format="value(name)"; done
    ```
 
    Then confirm Terraform agrees. Expect `No changes` and `exit=0`:

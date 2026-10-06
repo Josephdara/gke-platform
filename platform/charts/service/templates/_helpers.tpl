@@ -62,3 +62,9 @@ Requests must not exceed limits. The schema restricts units to m and Mi, so the 
 {{- fail "secrets lists the same name or env more than once. Remove the duplicate entry." -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "service.validateReplicas" -}}
+{{- if gt (int .Values.replicas.min) (int .Values.replicas.max) -}}
+{{- fail (printf "replicas.min (%d) is above replicas.max (%d). Lower min or raise max." (int .Values.replicas.min) (int .Values.replicas.max)) -}}
+{{- end -}}
+{{- end -}}

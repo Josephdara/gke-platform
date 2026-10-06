@@ -13,9 +13,8 @@ metadata:
     owner: jd
     app.kubernetes.io/version: sha-4f848fc
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: service-0.2.0
+    helm.sh/chart: service-1.0.0
 spec:
-  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -37,9 +36,9 @@ spec:
         owner: jd
         app.kubernetes.io/version: sha-4f848fc
         app.kubernetes.io/managed-by: Helm
-        helm.sh/chart: service-0.2.0
+        helm.sh/chart: service-1.0.0
       annotations:
-        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+        checksum/config: 86b2bbabe0a4f21152460b2d42979cb818db4ce0614e055a45f6e4dd1deaa59a
     spec:
       serviceAccountName: staging-platform-verification-api
       automountServiceAccountToken: false
@@ -127,9 +126,8 @@ metadata:
     owner: jd
     app.kubernetes.io/version: sha-4f848fc
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: service-0.2.0
+    helm.sh/chart: service-1.0.0
 spec:
-  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -151,9 +149,9 @@ spec:
         owner: jd
         app.kubernetes.io/version: sha-4f848fc
         app.kubernetes.io/managed-by: Helm
-        helm.sh/chart: service-0.2.0
+        helm.sh/chart: service-1.0.0
       annotations:
-        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+        checksum/config: 86b2bbabe0a4f21152460b2d42979cb818db4ce0614e055a45f6e4dd1deaa59a
     spec:
       serviceAccountName: staging-platform-verification-api
       automountServiceAccountToken: false
@@ -241,9 +239,8 @@ metadata:
     owner: jd
     app.kubernetes.io/version: sha-4f848fc
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: service-0.2.0
+    helm.sh/chart: service-1.0.0
 spec:
-  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -265,9 +262,9 @@ spec:
         owner: jd
         app.kubernetes.io/version: sha-4f848fc
         app.kubernetes.io/managed-by: Helm
-        helm.sh/chart: service-0.2.0
+        helm.sh/chart: service-1.0.0
       annotations:
-        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+        checksum/config: 86b2bbabe0a4f21152460b2d42979cb818db4ce0614e055a45f6e4dd1deaa59a
     spec:
       serviceAccountName: staging-platform-verification-api
       automountServiceAccountToken: false
@@ -355,9 +352,8 @@ metadata:
     owner: jd
     app.kubernetes.io/version: sha-4f848fc
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: service-0.2.0
+    helm.sh/chart: service-1.0.0
 spec:
-  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -379,9 +375,9 @@ spec:
         owner: jd
         app.kubernetes.io/version: sha-4f848fc
         app.kubernetes.io/managed-by: Helm
-        helm.sh/chart: service-0.2.0
+        helm.sh/chart: service-1.0.0
       annotations:
-        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+        checksum/config: 86b2bbabe0a4f21152460b2d42979cb818db4ce0614e055a45f6e4dd1deaa59a
     spec:
       serviceAccountName: staging-platform-verification-api
       automountServiceAccountToken: false
@@ -461,9 +457,8 @@ metadata:
     service: platform-verification-api
     app.kubernetes.io/version: sha-4f848fc
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: service-0.2.0
+    helm.sh/chart: service-1.0.0
 spec:
-  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -484,9 +479,9 @@ spec:
         service: platform-verification-api
         app.kubernetes.io/version: sha-4f848fc
         app.kubernetes.io/managed-by: Helm
-        helm.sh/chart: service-0.2.0
+        helm.sh/chart: service-1.0.0
       annotations:
-        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+        checksum/config: 86b2bbabe0a4f21152460b2d42979cb818db4ce0614e055a45f6e4dd1deaa59a
     spec:
       serviceAccountName: staging-platform-verification-api
       automountServiceAccountToken: false
@@ -574,9 +569,8 @@ metadata:
     owner: jd
     app.kubernetes.io/version: sha-4f848fc
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: service-0.2.0
+    helm.sh/chart: service-1.0.0
 spec:
-  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -598,9 +592,9 @@ spec:
         owner: jd
         app.kubernetes.io/version: sha-4f848fc
         app.kubernetes.io/managed-by: Helm
-        helm.sh/chart: service-0.2.0
+        helm.sh/chart: service-1.0.0
       annotations:
-        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+        checksum/config: 86b2bbabe0a4f21152460b2d42979cb818db4ce0614e055a45f6e4dd1deaa59a
     spec:
       serviceAccountName: default
       automountServiceAccountToken: false
@@ -688,9 +682,8 @@ metadata:
     owner: jd
     app.kubernetes.io/version: sha-4f848fc
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: service-0.2.0
+    helm.sh/chart: service-1.0.0
 spec:
-  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -712,9 +705,9 @@ spec:
         owner: jd
         app.kubernetes.io/version: sha-4f848fc
         app.kubernetes.io/managed-by: Helm
-        helm.sh/chart: service-0.2.0
+        helm.sh/chart: service-1.0.0
       annotations:
-        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+        checksum/config: 86b2bbabe0a4f21152460b2d42979cb818db4ce0614e055a45f6e4dd1deaa59a
     spec:
       serviceAccountName: staging-platform-verification-api
       automountServiceAccountToken: false
@@ -802,9 +795,8 @@ metadata:
     owner: jd
     app.kubernetes.io/version: sha-4f848fc
     app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: service-0.2.0
+    helm.sh/chart: service-1.0.0
 spec:
-  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -826,9 +818,9 @@ spec:
         owner: jd
         app.kubernetes.io/version: sha-4f848fc
         app.kubernetes.io/managed-by: Helm
-        helm.sh/chart: service-0.2.0
+        helm.sh/chart: service-1.0.0
       annotations:
-        checksum/config: 8684e07080eb12f844e0a3c4c51cebf60615e84dbc83871944fee4386dc14fba
+        checksum/config: 86b2bbabe0a4f21152460b2d42979cb818db4ce0614e055a45f6e4dd1deaa59a
     spec:
       serviceAccountName: staging-platform-verification-api
       automountServiceAccountToken: false
