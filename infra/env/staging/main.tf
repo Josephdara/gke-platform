@@ -3,6 +3,7 @@ module "foundation" {
 
   project_id  = var.project_id
   region      = var.region
+  environment = var.environment
   name_prefix = local.prefix
   labels      = { component = "image-registry" }
 }
@@ -18,6 +19,14 @@ resource "google_artifact_registry_repository_iam_member" "nodes_read_images" {
   project    = var.project_id
   location   = var.region
   repository = module.foundation.images_repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = module.identity.node_service_account_member
+}
+
+resource "google_artifact_registry_repository_iam_member" "nodes_read_mirror" {
+  project    = var.project_id
+  location   = var.region
+  repository = module.foundation.mirror_repository_id
   role       = "roles/artifactregistry.reader"
   member     = module.identity.node_service_account_member
 }
@@ -65,6 +74,17 @@ resource "google_storage_bucket_iam_member" "ci_write_evidence" {
   bucket = module.pipeline.evidence_bucket_name
   role   = each.value
   member = module.identity.ci_build_publish_member
+}
+
+module "edge" {
+  source = "../../modules/edge"
+
+  project_id  = var.project_id
+  environment = var.environment
+  dns_name    = "gke.josephdara.com"
+  lab_enabled = var.lab_enabled
+
+  depends_on = [module.foundation]
 }
 
 module "network" {

@@ -49,6 +49,17 @@ resource "google_container_cluster" "super" {
     }
   }
 
+  addons_config {
+    dns_cache_config {
+      enabled = true
+    }
+  }
+
+  rbac_binding_config {
+    enable_insecure_binding_system_authenticated   = false
+    enable_insecure_binding_system_unauthenticated = false
+  }
+
   gateway_api_config {
     channel = "CHANNEL_STANDARD"
   }

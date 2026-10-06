@@ -8,6 +8,11 @@ variable "region" {
   description = "Region for the image repository."
 }
 
+variable "environment" {
+  type        = string
+  description = "Environment prefix for new resource names, <environment>-<purpose>."
+}
+
 variable "name_prefix" {
   type        = string
   description = "Prefix for resource names, <project>-<environment>."

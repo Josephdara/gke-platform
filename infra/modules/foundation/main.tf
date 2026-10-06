@@ -7,7 +7,9 @@ locals {
     "monitoring.googleapis.com",
     "secretmanager.googleapis.com",
     "cloudbuild.googleapis.com",
-    "containeranalysis.googleapis.com"
+    "containeranalysis.googleapis.com",
+    "dns.googleapis.com",
+    "certificatemanager.googleapis.com"
   ])
 }
 
@@ -53,6 +55,26 @@ resource "google_artifact_registry_repository" "images" {
       tag_state  = "ANY"
       older_than = "604800s"
     }
+  }
+
+  depends_on = [google_project_service.this]
+}
+
+resource "google_artifact_registry_repository" "mirror" {
+  project         = var.project_id
+  location        = var.region
+  repository_id   = "${var.environment}-mirror"
+  format          = "DOCKER"
+  description     = "Controller images copied unchanged from upstream registries"
+  labels          = var.labels
+  deletion_policy = "PREVENT"
+
+  docker_config {
+    immutable_tags = true
+  }
+
+  vulnerability_scanning_config {
+    enablement_config = "DISABLED"
   }
 
   depends_on = [google_project_service.this]

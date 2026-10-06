@@ -8,10 +8,11 @@ This is how I set up and run the GCP side of the platform in project `gke-build-
 | --- | --- |
 | [`bootstrap/`](bootstrap/) | Bootstrap script and the retention rule for old Terraform state versions |
 | [`env/staging/`](env/staging/) | The Terraform root: version constraints, backend, provider, variables, and module calls |
-| [`modules/foundation/`](modules/foundation/) | Required APIs, including Cloud Build and Container Analysis, and the Artifact Registry image repository |
+| [`modules/foundation/`](modules/foundation/) | Required APIs, including Cloud Build and Container Analysis, and the Artifact Registry image and mirror repositories |
 | [`modules/identity/`](modules/identity/) | The GKE node and Cloud Build service accounts and their project roles |
 | [`modules/pipeline/`](modules/pipeline/) | Build evidence bucket, Cloud Build repository link, and the two build triggers |
 | [`modules/secrets/`](modules/secrets/) | Secret Manager secrets, each service's read grants, and Data Access audit logging for Secret Manager |
+| [`modules/edge/`](modules/edge/) | DNS zone, Certificate Manager certificate and map, and the lab's static IP and A record |
 | [`modules/network/`](modules/network/) | Lab network: VPC, subnet, Cloud Router, and Cloud NAT |
 | [`modules/gke/`](modules/gke/) | Lab GKE cluster and node pool |
 | [`tests/`](tests/) | Terraform validation script and its test input |
@@ -26,17 +27,20 @@ Persistent resources stay between sessions and are protected against deletion. L
 
 | Resource | Name | Lifetime |
 | --- | --- | --- |
-| Required APIs | Artifact Registry, Compute Engine, Kubernetes Engine, Logging, Monitoring, Secret Manager, Cloud Build, Container Analysis | Persistent |
+| Required APIs | Artifact Registry, Compute Engine, Kubernetes Engine, Logging, Monitoring, Secret Manager, Cloud Build, Container Analysis, Cloud DNS, Certificate Manager | Persistent |
 | Image repository | `gke-build-proj-staging-images` (named before the `<environment>-<purpose>` convention) | Persistent |
-| Node service account | `staging-nodes-sa`, with read access to the image repository | Persistent |
+| Mirror repository | `staging-mirror`: controller images copied unchanged from upstream, with no cleanup policy, protected against deletion | Persistent |
+| Node service account | `staging-nodes-sa`, with read access to the image and mirror repositories | Persistent |
 | Build service accounts | `staging-build-validate-sa`, which can only write logs; `staging-build-publish-sa`, which can also write to the image repository, and create and list objects in the evidence bucket but not read, overwrite, or delete them | Persistent |
 | Build evidence bucket | `gke-build-proj-staging-build-evidence`: scan reports and SBOMs, deleted after 90 days, protected against deletion | Persistent |
 | Secrets | `staging-platform-verification-api-demo`, readable only by the API's Kubernetes service account, and `staging-forbidden-demo`, with no grants. Values are added by hand, never through Terraform. Data Access audit logs record every read | Persistent |
 | Build triggers | Repository link `gke-platform`, and triggers `staging-pr-validate` and `staging-main-publish`; see the [pipeline README](../pipeline/README.md) | Persistent |
+| DNS and certificate | Zone `staging-dns` for `gke.josephdara.com`, with DNSSEC; certificate `staging-api-cert` for `api.staging.gke.josephdara.com`, validated through DNS authorization `staging-api-dns-auth`; certificate map `staging-cert-map`. All protected against deletion | Persistent |
 | Network | `staging-vpc`; subnet `staging-nodes-subnet` (10.40.0.0/24, pods 10.41.0.0/20, services 10.42.0.0/24) with Private Google Access | Lab |
 | Outbound access | `staging-router` and `staging-nat` | Lab |
-| Cluster | `staging-super-cluster`: zonal in us-east4-b, Regular channel from 1.36, private nodes, DNS endpoint only | Lab |
+| Cluster | `staging-super-cluster`: zonal in us-east4-b, Regular channel from 1.36, private nodes, DNS endpoint only, NodeLocal DNSCache, no RBAC bindings to `system:authenticated` or `system:unauthenticated` | Lab |
 | Node pool | `staging-super-pool`: 2 to 3 e2-standard-2 nodes, 30 GB pd-balanced disks | Lab |
+| Gateway address | Global static IP `staging-gateway-ip`, and the A record `api.staging.gke.josephdara.com` pointing to it | Lab |
 
 Terraform does not manage the budget or the billing export; both are set up by hand in the console. See [Budget and billing export](#budget-and-billing-export).
 
