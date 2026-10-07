@@ -21,7 +21,7 @@ This is how I set up and run the GCP side of the platform in project `gke-build-
 
 ## What Terraform manages
 
-I use one Terraform root, [`env/staging/`](env/staging/). Its state lives under the `staging` prefix of the `gke-build-proj-staging-tfstate` bucket. I run Terraform with my own project owner credentials. To run it yourself, you need the same access. Terraform CI, with its own deployment account, comes with the validation suite.
+I use one Terraform root, [`env/staging/`](env/staging/). Its state lives under the `staging` prefix of the `gke-build-proj-staging-tfstate` bucket. I run Terraform with my own project owner credentials. To run it yourself, you need the same access. Terraform CI with a separate deployment account is out of scope; I apply reviewed saved plans myself.
 
 Persistent resources stay between sessions and are protected against deletion. Lab resources exist only during a session: a plan with `lab_enabled=true` creates them, and a plan with `lab_enabled=false` removes them.
 
@@ -100,10 +100,10 @@ Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `k
    kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n staging delete httproute,gateway --all
    ```
 
-   Wait until GKE has removed the load balancer, which can take a few minutes. Every list must be empty:
+   Wait until GKE has removed the load balancer, which can take a few minutes. Backend services and health checks go last, so this loop ends only when all five lists are empty:
 
    ```bash
-   for r in "compute forwarding-rules" "compute target-https-proxies" "compute url-maps" "compute backend-services" "compute health-checks"; do echo "== $r"; gcloud ${=r} list --project=gke-build-proj --format="value(name)"; done
+   until [[ -z "$(for r in "compute forwarding-rules" "compute target-https-proxies" "compute url-maps" "compute backend-services" "compute health-checks"; do gcloud ${=r} list --project=gke-build-proj --format="value(name)"; done)" ]]; do sleep 20; done; date -u
    ```
 
    Both of these must print nothing:
@@ -279,5 +279,5 @@ I used these versions:
 | Image pipeline resources and GitHub connection | Done |
 | Budget, billing export dataset, and billing export (console) | Done |
 | Lab network and cluster | Created and deleted in each session |
-| Argo CD on the lab cluster | Verified in session 3; see the [evidence report](../platform/evidence/2026-10-03-gitops.md) |
-| Workload secrets, per-service grants, and Secret Manager audit logs | Verified in session 4; see the [evidence report](../platform/evidence/2026-10-06-isolation.md) |
+| Argo CD on the lab cluster | Verified in a lab session on 2026-10-03; see the [evidence report](../platform/evidence/2026-10-03-gitops.md) |
+| Workload secrets, per-service grants, and Secret Manager audit logs | Verified in a lab session on 2026-10-06; see the [evidence report](../platform/evidence/2026-10-06-isolation.md) |

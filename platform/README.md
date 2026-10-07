@@ -10,11 +10,11 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | [`charts/service/`](charts/service/)                                         | Shared Helm chart that deploys one HTTP service                                                                             |
 | [`services/platform-verification-api/`](services/platform-verification-api/) | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml`    |
 | [`namespaces/`](namespaces/)                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                |
-| [`tests/`](tests/)                                                           | Chart validation script; its fixtures live in `charts/service/tests/fixtures/`, and the policy fixtures in `tests/policies/` |
+| [`tests/`](tests/)                                                           | Chart validation and live-check scripts; the chart fixtures live in `charts/service/tests/fixtures/`, and the policy fixtures in `tests/policies/` |
 | [`argocd/`](argocd/)                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
 | [`kyverno/`](kyverno/) | Kyverno install overlay: the pinned upstream manifest with images from the mirror repository |
 | [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` namespace and its guardrails, the admission policies, the projects, the Kyverno Application, and one Application per service |
-| [`evidence/`](evidence/)                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results                                     |
+| [`evidence/`](evidence/)                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results; see the [index](evidence/README.md) |
 
 
 `values-staging.yaml` holds the digest of an image the pipeline published. Changing it chooses what staging runs; see [Promoting an image to staging](../pipeline/README.md#promoting-an-image-to-staging).
@@ -56,7 +56,7 @@ The root Application applies these to `staging` before any service:
 
 Nothing reaches a service's Pods until a policy opens it. The kubelet's probes still work, because traffic from a Pod's own node is always allowed. Real developer access needs Google Groups for RBAC and the IAM Kubernetes Engine Cluster Viewer role; with Google Groups, the binding's subject becomes the group's email address.
 
-Session 4 tested each of these; see the [evidence report](evidence/2026-10-06-isolation.md).
+A lab session on 2026-10-06 tested each of these; see the [evidence report](evidence/2026-10-06-isolation.md).
 
 ### Admission policies
 
@@ -346,6 +346,31 @@ A passing run ends with:
 ```text
 6 passed, 0 failed
 ```
+
+Pull request CI runs the same script with `SKIP_APP_TESTS=1`, because the pipeline's `test` step already runs the application tests; see the [pipeline README](../pipeline/README.md#what-a-build-does).
+
+## Live checks
+
+During a lab session, after the bootstrap, run this from an up-to-date `main`:
+
+```sh
+platform/tests/live-checks.sh
+```
+
+It needs kubectl with credentials for the staging cluster, Git, and curl, and refuses to run against any other context. It prints the time, the local commit, and the Kubernetes, Argo CD, and Kyverno versions, then one result per check with its details underneath:
+
+| Check | Passes when |
+| --- | --- |
+| Applications | Every Argo CD Application is Synced and Healthy |
+| Running image | The API's Pods run the digest in `values-staging.yaml` at the revision Argo CD synced |
+| Secret | The API returns its mounted secret's label |
+| DNS and egress | An API Pod resolves a name and cannot open an outbound connection |
+| Isolation | A Pod in a temporary namespace cannot reach the API's Service, while its own internet connection works |
+| Admission | A naive Deployment is denied in `staging` and admitted in `default`, both as server dry runs |
+| Developer access | The `staging-developers` group can list Pods but cannot read secrets or exec |
+| HTTPS | The route's hostname answers 200 through the Gateway |
+
+The only object it creates is the temporary namespace, which it deletes on exit. Exit codes: `0` when every check passes, `1` when a check fails, and `2` when a tool or the cluster is missing. The identity refusal tests and disruptive exercises, such as load and node drains, run separately.
 
 
 

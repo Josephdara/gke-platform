@@ -1,6 +1,6 @@
-# Identity, secrets, and isolation: lab session 4
+# Identity, secrets, and isolation
 
-This report records the first lab session with workload identity, mounted secrets, and namespace isolation: release C reading a Secret Manager secret through its own Kubernetes service account, inside a `staging` namespace with a quota, a limit range, default-deny network policies, and a read-only developer role. Each control was tested with an allowed and a refused case. All times are UTC on 2026-10-06 unless stated. Values come from command output captured during the session; anything that was not captured is listed under [Deviations and gaps](#deviations-and-gaps).
+This report records the first [lab session](../../infra/README.md#sessions) with workload identity, mounted secrets, and namespace isolation: release C reading a Secret Manager secret through its own Kubernetes service account, inside a `staging` namespace with a quota, a limit range, default-deny network policies, and a read-only developer role. Each control was tested with an allowed and a refused case. All times are UTC on 2026-10-06 unless stated. Values come from command output captured during the session; anything that was not captured is listed under [Deviations and gaps](#deviations-and-gaps).
 
 ## Summary
 
@@ -12,8 +12,8 @@ This report records the first lab session with workload identity, mounted secret
 | Authorized Google API access | The API's service account reads the demo secret through the Secret Manager API | **Pass**: HTTP 200 |
 | Unauthorized Google API access | The forbidden secret, the `default` service account, and the same service account name in another namespace are refused | **Pass**: HTTP 403 in all three cases |
 | Network isolation | Clients in `staging` and in another namespace cannot reach the API | **Pass**: both timed out while their internet control connected |
-| DNS for workloads | The API's Pods resolve names | **Fail**: fixed in #15, re-check pending |
-| No internet egress from workloads | The API's Pods cannot open outbound connections | **Not run**: pending |
+| DNS for workloads | The API's Pods resolve names | **Fail**: fixed in [#15](https://github.com/Josephdara/gke-platform/pull/15); passed on 2026-10-07, see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access) |
+| No internet egress from workloads | The API's Pods cannot open outbound connections | **Not run**; passed on 2026-10-07, see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access) |
 | Developer access | Read-only in `staging`; no secrets, exec, port-forward, writes, or other namespaces | **Pass**, by impersonation |
 | Resource defaults and maximum | The LimitRange applies defaults and rejects a container above 500m CPU | **Pass** |
 | Pod quota | The 11th Pod in `staging` is refused | **Pass** |
@@ -40,11 +40,11 @@ This report records the first lab session with workload identity, mounted secret
 
 | Commit | Pull request | Change |
 | --- | --- | --- |
-| `93efdc6272241f7ac5696549f66f8fdb74052791` | #10, merged 2026-10-05 20:06:52 | Secrets, the per-service grant, and Secret Manager audit logs; applied with the lab off |
-| `4f848fc0c3fc506de904f7c228f5b19e658faafa` | #12, merged 2026-10-05 21:00:43 | The API reads a mounted secret (release C) |
-| `608dee5a5ffb180bc872d890303ac89bee372f8a` | #13, merged 2026-10-05 22:23:33 | Chart `secrets[]` input |
-| `3ba98972add79940a31aa8a729c2054e8229a9a0` | #14, merged 2026-10-05 22:51:32 | Staging guardrails and project changes, and the promotion to release C. Head of `main` at bootstrap |
-| `cb3a907e5a35e336460685575aea4c89e6b414b8` | #15, merged 2026-10-06 18:11:30 | DNS fix, after the session |
+| `93efdc6272241f7ac5696549f66f8fdb74052791` | [#10](https://github.com/Josephdara/gke-platform/pull/10), merged 2026-10-05 20:06:52 | Secrets, the per-service grant, and Secret Manager audit logs; applied with the lab off |
+| `4f848fc0c3fc506de904f7c228f5b19e658faafa` | [#12](https://github.com/Josephdara/gke-platform/pull/12), merged 2026-10-05 21:00:43 | The API reads a mounted secret (release C) |
+| `608dee5a5ffb180bc872d890303ac89bee372f8a` | [#13](https://github.com/Josephdara/gke-platform/pull/13), merged 2026-10-05 22:23:33 | Chart `secrets[]` input |
+| `3ba98972add79940a31aa8a729c2054e8229a9a0` | [#14](https://github.com/Josephdara/gke-platform/pull/14), merged 2026-10-05 22:51:32 | Staging guardrails and project changes, and the promotion to release C. Head of `main` at bootstrap |
+| `cb3a907e5a35e336460685575aea4c89e6b414b8` | [#15](https://github.com/Josephdara/gke-platform/pull/15), merged 2026-10-06 18:11:30 | DNS fix, after the session |
 
 | Release | Tag | Digest | Notes |
 | --- | --- | --- | --- |
@@ -56,7 +56,7 @@ The demo secret `staging-platform-verification-api-demo` held version 1 (label `
 
 | Check | Result |
 | --- | --- |
-| `validate-chart.sh` on the content merged in #14 | 5 passed, 0 failed: 55 application tests, 6 invalid fixtures rejected, wrong namespace refused. The staging render had 5 resources; kubeconform skipped the SecretProviderClass |
+| `validate-chart.sh` on the content merged in [#14](https://github.com/Josephdara/gke-platform/pull/14) | 5 passed, 0 failed: 55 application tests, 6 invalid fixtures rejected, wrong namespace refused. The staging render had 5 resources; kubeconform skipped the SecretProviderClass |
 | kubeconform on `platform/cluster/` and `platform/argocd/root/` | 7 valid; 4 Argo CD resources skipped |
 | kube-dns | 2 Pods Running |
 | Secret Manager add-on | CSI driver and SecretProviderClass CRD present |
@@ -134,9 +134,9 @@ The 20 most recent `AccessSecretVersion` entries, from 17:27:41 to 17:40:34, all
 
 The API Pod could not resolve any name. The cluster had NodeLocal DNSCache enabled: GKE turns it on by default for Standard clusters from 1.34.1-gke.3720000, and the Terraform does not set it. With Dataplane V2, the cache runs as ordinary Pods in `kube-system`, and a Pod's DNS queries go to the cache Pod on its own node. `staging-allow-dns` only allowed Pods labelled `k8s-app: kube-dns`, so those queries were dropped.
 
-The test clients in tests 10 and 11 resolved names because the temporary `check-egress` policy allowed them all egress, so the failure appeared only on the API Pod. The API itself needs no DNS today, but every future workload in `staging` would have failed name lookups, including the service-to-service call planned for the second service.
+The test clients in tests 10 and 11 resolved names because the temporary `check-egress` policy allowed them all egress, so the failure appeared only on the API Pod. The API itself needs no DNS today, but every future workload in `staging` would have failed name lookups.
 
-#15 changed `staging-allow-dns` to allow port 53, UDP and TCP, to any Pod in `kube-system`, which covers both kube-dns and the cache. The change has not run on a cluster yet.
+The fix, [#15](https://github.com/Josephdara/gke-platform/pull/15), changed `staging-allow-dns` to allow port 53, UDP and TCP, to any Pod in `kube-system`, which covers both kube-dns and the cache. The change had not run on a cluster when this report was written; it passed on 2026-10-07, see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access).
 
 ## Teardown
 
@@ -148,12 +148,12 @@ The cluster was created at 16:19:54. Creating the lab took 9 min 13 s of Terrafo
 
 | Item | What happened | Effect |
 | --- | --- | --- |
-| DNS from workloads | Failed, as described above | Fixed in #15; re-check pending |
-| Workload internet egress | Test 13 did not run because test 12 stopped the script | Unverified; re-check pending |
+| DNS from workloads | Failed, as described above | Fixed in [#15](https://github.com/Josephdara/gke-platform/pull/15); passed on 2026-10-07, see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access) |
+| Workload internet egress | Test 13 did not run because test 12 stopped the script | Unverified here; passed on 2026-10-07, see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access) |
 | Invalid version timing | The time version 2 was added was not captured | Only its reload failures are recorded, not its propagation time |
 | Denied reads in the audit log | Not queried | Attribution is shown for allowed reads only |
 | Release C evidence | The evidence bucket listing was not captured in this session | The pipeline pushes only after its evidence upload succeeds |
-| Promotion | Release C was promoted inside #14, together with the guardrails | Rolling back the release alone needs a new pull request, not a revert of #14 |
+| Promotion | Release C was promoted inside [#14](https://github.com/Josephdara/gke-platform/pull/14), together with the guardrails | Rolling back the release alone needs a new pull request, not a revert of [#14](https://github.com/Josephdara/gke-platform/pull/14) |
 | Bootstrap duration | Not timed | |
 | Capacity | Node usage and requests were not recorded | Quota use is recorded instead |
 | RBAC | Tested by impersonation only; Google Groups for RBAC is not configured | The rules are proven, not a real developer sign-in |
@@ -163,5 +163,5 @@ The cluster was created at 16:19:54. Creating the lab took 9 min 13 s of Terrafo
 - At the start of the next session, rerun the DNS lookup and outbound connection from an API Pod: expect a resolved address, then a timeout.
 - Optional hardening: the cluster allows RBAC bindings to `system:authenticated` and `system:unauthenticated` (GKE's default); a Terraform setting can forbid them.
 - Optional: set NodeLocal DNSCache explicitly in Terraform, so the DNS policy's dependency is visible in code.
-- Revisit the quota when the second service and HPA arrive.
+- Revisit the quota when the HPA arrives.
 - Time the bootstrap and record the time of each secret version change in future sessions.

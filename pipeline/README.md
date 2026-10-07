@@ -8,6 +8,7 @@ This is how I turn application source into a deployable image. Cloud Build tests
 | --- | --- |
 | [`cloudbuild-validate.yaml`](cloudbuild-validate.yaml) | Pull request build: test, build, and scan; nothing is pushed |
 | [`cloudbuild-publish.yaml`](cloudbuild-publish.yaml) | Merge build: the same checks, then the scan report, SBOM, evidence upload, and push |
+| [`install_tools.py`](install_tools.py) | Downloads Helm, kubeconform, the Kyverno CLI, Terraform, and Trivy for the validate build, each checked against a pinned SHA-256 |
 | [`../apps/platform-verification-api/.trivyignore.yaml`](../apps/platform-verification-api/.trivyignore.yaml) | Vulnerabilities I have accepted for the API image, each with a reason and an expiry date |
 
 ## Triggers
@@ -33,10 +34,13 @@ Both triggers run in `us-east4` on the `staging-github` connection, which links 
 | `sbom` | No | Yes | Writes the image's package list to `sbom.cdx.json` (CycloneDX) |
 | `evidence` | No | Yes | Copies both files to `gs://gke-build-proj-staging-build-evidence/platform-verification-api/<full commit>/` |
 | Push | No | Yes | Pushes the image to `gke-build-proj-staging-images`, and Cloud Build records provenance for it |
+| `tools` | Yes | No | Runs `install_tools.py` into `/workspace/bin` |
+| `chart` | Yes | No | Runs `platform/tests/validate-chart.sh` with `SKIP_APP_TESTS=1`: chart renders against the Kubernetes schemas, invalid-input fixtures, and the admission policy fixtures |
+| `terraform` | Yes | No | Runs `infra/tests/validate-terraform.sh`: format, no tfvars, init without a backend, validate with the lab on and off, and Trivy |
 
-Every step must pass for the next one to run. The push comes last, so an image is never published without its evidence: if the upload fails, nothing is pushed. Tags are immutable, so a published tag always names the same image.
+Every step must pass for the next one to run. In the validate build, `tools`, `chart`, and `terraform` run alongside the image steps. The push comes last, so an image is never published without its evidence: if the upload fails, nothing is pushed. Tags are immutable, so a published tag always names the same image.
 
-Builder images are pinned by digest: Python 3.14.8 (the same image the Dockerfile uses), the Cloud Builders Docker image, Trivy 0.74.0, and the Cloud SDK 587.0.0 slim image.
+Builder images are pinned by digest: Python 3.14.8 (the same image the Dockerfile uses), the Cloud Builders Docker image, Trivy 0.74.0, and the Cloud SDK 587.0.0 slim image. The validate build's tools are pinned by checksum in `install_tools.py`.
 
 ## Finding a published image
 
@@ -127,7 +131,7 @@ A passing gate exits with code 0. Remove the tar and the `dryrun` image afterwar
 
 ## Limits
 
-- Pull request builds run the API tests, the image build, and the scan. Chart, Terraform, and policy checks join them with the validation suite.
+- Image evidence is checked by hand before a promotion pull request, as described in [Promoting an image to staging](#promoting-an-image-to-staging); no pipeline step checks it.
 - Images are not signed.
 - Artifact Registry's own vulnerability scanning is off; Trivy is the only scanner.
 - Evidence objects are deleted after 90 days, so an image can outlive its evidence.
