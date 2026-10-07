@@ -15,7 +15,6 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | [`kyverno/`](kyverno/) | Kyverno install overlay: the pinned upstream manifest with images from the mirror repository |
 | [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` namespace and its guardrails, the admission policies, the projects, the Kyverno Application, and one Application per service |
 | [`evidence/`](evidence/)                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results; see the [index](evidence/README.md) |
-| [`operations.md`](operations.md) | Investigating an unhealthy service, and draining a node |
 
 
 `values-staging.yaml` holds the digest of an image the pipeline published. Changing it chooses what staging runs; see [Promoting an image to staging](../pipeline/README.md#promoting-an-image-to-staging).
@@ -371,7 +370,7 @@ It needs kubectl with credentials for the staging cluster, Git, and curl, and re
 | Developer access | The `staging-developers` group can list Pods but cannot read secrets or exec |
 | HTTPS | The route's hostname answers 200 through the Gateway |
 
-The only object it creates is the temporary namespace, which it deletes on exit. Exit codes: `0` when every check passes, `1` when a check fails, and `2` when a tool or the cluster is missing. The identity refusal tests and disruptive exercises, such as load and node drains, run separately. To investigate an alert or drain a node, see the [operations guide](operations.md).
+The only object it creates is the temporary namespace, which it deletes on exit. Exit codes: `0` when every check passes, `1` when a check fails, and `2` when a tool or the cluster is missing. The identity refusal tests and disruptive exercises, such as load and node drains, run separately. To investigate an alert or drain a node, see the [runbook](../RUNBOOK.md#operate-the-platform).
 
 
 

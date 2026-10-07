@@ -17,7 +17,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip check
 ```
 
-All 44 tests pass for me. The process tests start the real server and send it SIGTERM; they are skipped where the environment does not allow binding a local socket.
+All 67 tests pass for me. The process tests start the real server and send it SIGTERM; they are skipped where the environment does not allow binding a local socket.
 
 ## Building and running the container image
 

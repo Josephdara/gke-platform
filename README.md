@@ -34,28 +34,17 @@ A release is a pull request that changes one image digest in `values-staging.yam
 
 | To | Read |
 | --- | --- |
-| Build the platform from scratch | [Reproducing it](#reproducing-it) |
+| Build, run, or tear down the platform | [Runbook](RUNBOOK.md) |
 | Test the Python service, or build and run its image | [Applications README](apps/README.md) |
 | Validate the Helm chart, or deploy it on Docker Desktop | [Platform README](platform/README.md) |
 | Bootstrap GCP, apply Terraform, or run a lab session | [Infrastructure README](infra/README.md) |
 | Publish an image, or choose which image staging runs | [Pipeline README](pipeline/README.md) |
 | Run Argo CD, release, or roll back | [GitOps with Argo CD](platform/README.md#gitops-with-argo-cd) |
-| Investigate an alert, or drain a node | [Operations guide](platform/operations.md) |
+| Investigate an alert, or drain a node | [Runbook](RUNBOOK.md#operate-the-platform) |
 
 ## Reproducing it
 
-These are the steps in order. Names such as `gke-build-proj`, `gke.josephdara.com`, and the GitHub repository are mine; to run it in your own project, change them in `infra/env/staging/`, the platform manifests, and the service's values files.
-
-1. Bootstrap the project and Terraform state: [Bootstrap](infra/README.md#bootstrap).
-2. In the console, create the budget, the billing export, and the `staging-alerts` email channel: [Budget and billing export](infra/README.md#budget-and-billing-export) and [Alert email channel](infra/README.md#alert-email-channel).
-3. Connect Cloud Build to GitHub: [Cloud Build GitHub connection](infra/README.md#cloud-build-github-connection).
-4. Plan and apply with the lab off, which creates only the persistent resources: [Sessions](infra/README.md#sessions).
-5. Delegate the DNS zone from the parent domain, with name server and DS records, and wait for the certificate to become active. I did this by hand at my DNS host, and it is not written up yet.
-6. Copy the Argo CD, Redis, and Kyverno images into `staging-mirror` with `crane copy`, keeping the digests pinned in `platform/argocd/kustomization.yaml` and `platform/kyverno/kustomization.yaml`. This first copy is not written up yet either; upgrades are, in the [Platform README](platform/README.md#changing-argo-cd).
-7. Publish an image by merging a change to the API, and promote its digest: [Promoting an image to staging](pipeline/README.md#promoting-an-image-to-staging).
-8. Start a lab session and bootstrap Argo CD: [Start a session](infra/README.md#start-a-session).
-9. Run the live checks: [Live checks](platform/README.md#live-checks).
-10. End the session: [End a session](infra/README.md#end-a-session).
+The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a running platform, including every step done by hand outside the code, then covers releasing, operating, and tearing it down.
 
 ## Repository layout
 
@@ -69,9 +58,9 @@ These are the steps in order. Names such as `gke-build-proj`, `gke.josephdara.co
 | [`platform/argocd/`](platform/argocd/) | Argo CD install overlay, the root project and Application, and the bootstrap script |
 | [`platform/kyverno/`](platform/kyverno/) | Kyverno install overlay, with images from the mirror repository |
 | [`platform/cluster/`](platform/cluster/) | What Argo CD manages from Git: the `staging` namespace and its guardrails, the Gateway, the admission policies, the projects, and the Applications |
-| [`platform/operations.md`](platform/operations.md) | Investigating an unhealthy service, and draining a node |
 | [`platform/evidence/`](platform/evidence/) | Reports from lab sessions; see the [index](platform/evidence/README.md) |
 | [`infra/`](infra/) | GCP bootstrap, Terraform root and modules, and Terraform validation |
+| [`RUNBOOK.md`](RUNBOOK.md) | Setup, lab sessions, releases, operations, and teardown, with commands |
 | [`architecture.md`](architecture.md) | Architecture and design decisions |
 | [`pipeline/`](pipeline/) | Cloud Build configuration that tests, builds, scans, and publishes the API image. See its [README](pipeline/README.md) |
 
@@ -119,7 +108,6 @@ In a lab session on 2026-10-06, the API's Pods could not resolve any name. The D
 - **No spare node:** two nodes cannot absorb the loss of one; the autoscaler adds a third within about a minute.
 - **Node upgrades not rehearsed:** the nodes already ran the control plane's version, so the upgrade command replaced nothing.
 - **Alerts see only the API's metrics:** errors the load balancer returns by itself never reach the error-rate alert. Alert emails say `on __missing__` where a resource name would appear.
-- **Manual setup steps:** DNS delegation and the first copy of controller images into the mirror are not written up yet.
 - **One environment in one zone:** a zonal staging cluster that exists only during lab sessions.
 - **Developer access:** tested by impersonation only; Google Groups for RBAC is not configured.
 - **Left out:** a second service and an onboarding rehearsal, custom dashboards, Terraform CI with a deployment identity, policy exception tooling, consistency checks across rendered resources, and a recorded format for Trivy exceptions.

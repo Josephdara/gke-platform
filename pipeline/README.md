@@ -98,7 +98,11 @@ Accepted findings still appear in `scan.json`, marked as suppressed.
 
 ## Updating the base image
 
-The base image digest appears in three places, and they must always match: the Dockerfile `FROM` line and the `test` step in both build files.
+The base image digest is pinned in six places, and they must always match: the Dockerfile `FROM` line, the `test` step in both build files, and the `tools`, `chart`, and `terraform` steps in the validate build. This lists them:
+
+```sh
+git grep -n "python:3.14.8-slim-bookworm@sha256"
+```
 
 To check whether a fixed image exists:
 
@@ -114,7 +118,7 @@ To check whether a fixed image exists:
    docker run --rm --platform linux/amd64 python:3.14.8-slim-bookworm@sha256:<new digest> dpkg-query -W libssl3 openssl
    ```
 
-3. Update all three places, run the local gate below, and remove any accepted findings the new image fixes.
+3. Update every pin, run the local gate below, and remove any accepted findings the new image fixes.
 
 ## Running the gate locally
 
