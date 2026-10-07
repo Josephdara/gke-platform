@@ -81,6 +81,8 @@ Because of `-chdir`, plan paths are relative to `infra/env/staging/`, so `../../
 
    It ends with `PASS  running image matches Git` once both Applications are Synced and Healthy. See [GitOps with Argo CD](../platform/README.md#gitops-with-argo-cd).
 
+   The Gateway's load balancer can take a few minutes longer. In my last lab session, HTTPS returned 404 two minutes after the bootstrap and 200 six minutes after.
+
 Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `kubectl` and `helm` command. Your kubectl must be within one minor version of the cluster (1.36).
 
 ### End a session
@@ -286,3 +288,5 @@ I used these versions:
 | Lab network and cluster | Created and deleted in each session |
 | Argo CD on the lab cluster | Verified in a lab session on 2026-10-03; see the [evidence report](../platform/evidence/2026-10-03-gitops.md) |
 | Workload secrets, per-service grants, and Secret Manager audit logs | Verified in a lab session on 2026-10-06; see the [evidence report](../platform/evidence/2026-10-06-isolation.md) |
+| DNS zone, certificate, mirror repository, and cluster hardening | Verified in a lab session on 2026-10-07; see the [evidence report](../platform/evidence/2026-10-07-admission.md) |
+| Managed Prometheus, kube state metrics, and alert policies | Verified in a lab session on 2026-10-07; see the [evidence report](../platform/evidence/2026-10-07-acceptance.md) |
