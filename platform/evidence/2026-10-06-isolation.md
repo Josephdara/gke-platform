@@ -1,6 +1,6 @@
 # Identity, secrets, and isolation
 
-This report records the first [lab session](../../infra/README.md#sessions) with workload identity, mounted secrets, and namespace isolation: release C reading a Secret Manager secret through its own Kubernetes service account, inside a `staging` namespace with a quota, a limit range, default-deny network policies, and a read-only developer role. Each control was tested with an allowed and a refused case. All times are UTC on 2026-10-06 unless stated. Values come from command output captured during the session; anything that was not captured is listed under [Deviations and gaps](#deviations-and-gaps).
+This report records the first [lab session](../../infra/README.md#sessions) with workload identity, mounted secrets, and namespace isolation: release C reading a Secret Manager secret through its own Kubernetes service account, inside a `staging` namespace with a quota, a limit range, default-deny network policies, and a read-only developer role. Each control was tested with an allowed and a refused case. Values come from command output captured during the session; anything that was not captured is listed under [Deviations and gaps](#deviations-and-gaps).
 
 ## Summary
 
@@ -40,15 +40,15 @@ This report records the first [lab session](../../infra/README.md#sessions) with
 
 | Commit | Pull request | Change |
 | --- | --- | --- |
-| `93efdc6272241f7ac5696549f66f8fdb74052791` | [#10](https://github.com/Josephdara/gke-platform/pull/10), merged 2026-10-05 20:06:52 | Secrets, the per-service grant, and Secret Manager audit logs; applied with the lab off |
-| `4f848fc0c3fc506de904f7c228f5b19e658faafa` | [#12](https://github.com/Josephdara/gke-platform/pull/12), merged 2026-10-05 21:00:43 | The API reads a mounted secret (release C) |
-| `608dee5a5ffb180bc872d890303ac89bee372f8a` | [#13](https://github.com/Josephdara/gke-platform/pull/13), merged 2026-10-05 22:23:33 | Chart `secrets[]` input |
-| `3ba98972add79940a31aa8a729c2054e8229a9a0` | [#14](https://github.com/Josephdara/gke-platform/pull/14), merged 2026-10-05 22:51:32 | Staging guardrails and project changes, and the promotion to release C. Head of `main` at bootstrap |
-| `cb3a907e5a35e336460685575aea4c89e6b414b8` | [#15](https://github.com/Josephdara/gke-platform/pull/15), merged 2026-10-06 18:11:30 | DNS fix, after the session |
+| `93efdc6272241f7ac5696549f66f8fdb74052791` | [#10](https://github.com/Josephdara/gke-platform/pull/10) | Secrets, the per-service grant, and Secret Manager audit logs; applied with the lab off |
+| `4f848fc0c3fc506de904f7c228f5b19e658faafa` | [#12](https://github.com/Josephdara/gke-platform/pull/12) | The API reads a mounted secret (release C) |
+| `608dee5a5ffb180bc872d890303ac89bee372f8a` | [#13](https://github.com/Josephdara/gke-platform/pull/13) | Chart `secrets[]` input |
+| `3ba98972add79940a31aa8a729c2054e8229a9a0` | [#14](https://github.com/Josephdara/gke-platform/pull/14) | Staging guardrails and project changes, and the promotion to release C. Head of `main` at bootstrap |
+| `cb3a907e5a35e336460685575aea4c89e6b414b8` | [#15](https://github.com/Josephdara/gke-platform/pull/15) | DNS fix, after the session |
 
 | Release | Tag | Digest | Notes |
 | --- | --- | --- | --- |
-| C | `sha-4f848fc` | `sha256:5eefe9ae99fadc5b0837e468a38acd83bcd386a586b3da85d8a1f011caf60aa3` | Published by build `894a74b1`, started 2026-10-05 21:00:47 with status `SUCCESS` |
+| C | `sha-4f848fc` | `sha256:5eefe9ae99fadc5b0837e468a38acd83bcd386a586b3da85d8a1f011caf60aa3` | Published by build `894a74b1`, with status `SUCCESS` |
 
 The demo secret `staging-platform-verification-api-demo` held version 1 (label `v1`) at the start of the session. Versions 2 and 3 were added during the rotation test. The forbidden secret `staging-forbidden-demo` has no grants.
 
@@ -72,7 +72,7 @@ The demo secret `staging-platform-verification-api-demo` held version 1 (label `
 | `Synced/Progressing` | `Synced/Progressing` |
 | `Synced/Healthy` | `Synced/Healthy` |
 
-After the sync, `staging` held the ResourceQuota, the LimitRange, both NetworkPolicies, the Role, the RoleBinding, and the service's SecretProviderClass. Quota use at rest was 2 of 10 Pods, 200m of 1 CPU and 256Mi of 1Gi requested, and 1 of 3 CPU and 512Mi of 2Gi in limits. The two API Pods ran on different nodes; each pulled the 50,677,917-byte image in under 5 seconds and logged `secret_loaded` with label `v1` at 16:37:12 and 16:37:13.
+After the sync, `staging` held the ResourceQuota, the LimitRange, both NetworkPolicies, the Role, the RoleBinding, and the service's SecretProviderClass. Quota use at rest was 2 of 10 Pods, 200m of 1 CPU and 256Mi of 1Gi requested, and 1 of 3 CPU and 512Mi of 2Gi in limits. The two API Pods ran on different nodes; each pulled the 50,677,917-byte image in under 5 seconds and logged `secret_loaded` with label `v1`, 1 second apart.
 
 ## Test setup
 
@@ -116,11 +116,11 @@ Test 17, as `kubectl auth can-i` answered:
 
 Version 2 was deliberately invalid: a label containing a space and an empty value.
 
-| Time | Observation |
+| Since the first failure | Observation |
 | --- | --- |
-| 17:24:25 | First Pod logged `secret_reload_failed` with `error_type: SecretFormatError` |
-| 17:24:29 | Second Pod logged the same |
-| 17:26:18 to 17:29:50 | 12 samples of both Pods' labels, all `v1` |
+| 0 | First Pod logged `secret_reload_failed` with `error_type: SecretFormatError` |
+| +4 s | Second Pod logged the same |
+| +1 min 53 s to +5 min 25 s | 12 samples of both Pods' labels, all `v1` |
 
 Both Pods stayed `1/1` Ready with 0 restarts. Version 3, a valid secret with label `v3`, reached every Pod 60 seconds after it was added, measured from just before the `gcloud secrets versions add` command. Version 2 was then disabled, leaving versions 1 and 3 enabled.
 
@@ -128,7 +128,7 @@ The driver checks each Pod's mount on its own 120-second cycle, so the time for 
 
 ## Audit log
 
-The 20 most recent `AccessSecretVersion` entries, from 17:27:41 to 17:40:34, all name the principal `serviceAccount:gke-build-proj.svc.id.goog[staging/staging-platform-verification-api]` reading `projects/PROJECT_NUMBER/secrets/staging-platform-verification-api-demo/versions/latest`, with no error status. No test Pod ran in that window, so these reads came from the CSI driver's rotation checks. Entries for the refused reads in tests 5, 7, 8, and 9 fell outside these 20 rows and were not queried.
+The 20 most recent `AccessSecretVersion` entries, spanning 12 min 53 s, all name the principal `serviceAccount:gke-build-proj.svc.id.goog[staging/staging-platform-verification-api]` reading `projects/PROJECT_NUMBER/secrets/staging-platform-verification-api-demo/versions/latest`, with no error status. No test Pod ran in that window, so these reads came from the CSI driver's rotation checks. Entries for the refused reads in tests 5, 7, 8, and 9 fell outside these 20 rows and were not queried.
 
 ## DNS failure
 
@@ -142,7 +142,7 @@ The fix, [#15](https://github.com/Josephdara/gke-platform/pull/15), changed `sta
 
 Automated sync was turned off on the root Application and then the service Application. No LoadBalancer Services or Gateways existed. A saved `lab_enabled=false` plan destroyed 6 resources: the node pool took 4 min 22 s, the cluster 5 min 2 s, the subnet 21 s, and the network 23 s, with the NAT and router removed during the node pool's deletion. The inventory of clusters, instances, disks, addresses, forwarding rules, network endpoint groups, routers, networks, and firewall rules was empty. A final plan reported `No changes` with exit code 0; the secrets, the grant, and the audit configuration were untouched.
 
-The cluster was created at 16:19:54. Creating the lab took 9 min 13 s of Terraform time.
+Creating the lab took 9 min 13 s of Terraform time.
 
 ## Deviations and gaps
 

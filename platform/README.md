@@ -15,6 +15,7 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | [`kyverno/`](kyverno/) | Kyverno install overlay: the pinned upstream manifest with images from the mirror repository |
 | [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` namespace and its guardrails, the admission policies, the projects, the Kyverno Application, and one Application per service |
 | [`evidence/`](evidence/)                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results; see the [index](evidence/README.md) |
+| [`operations.md`](operations.md) | Investigating an unhealthy service, and draining a node |
 
 
 `values-staging.yaml` holds the digest of an image the pipeline published. Changing it chooses what staging runs; see [Promoting an image to staging](../pipeline/README.md#promoting-an-image-to-staging).
@@ -103,7 +104,7 @@ It checks it can reach the staging cluster, installs Argo CD with server-side ap
 PASS  running image matches Git
 ```
 
-It is safe to rerun. In my last session it took about two and a half minutes.
+It is safe to rerun. With Kyverno and managed Prometheus, it took 9 minutes 28 seconds in my last lab session. HTTPS can need a few more minutes after it ends, while the load balancer is programmed.
 
 ### Checking status
 
@@ -125,7 +126,7 @@ kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n argocd 
 
 To release, open a pull request that changes `image.digest` and `releaseVersion` in `values-staging.yaml`, as described in [Promoting an image to staging](../pipeline/README.md#promoting-an-image-to-staging), and merge it. To roll back, revert that commit through another pull request. Neither starts a build: the revert brings back the previous digest, which is still in the registry.
 
-In my last session, both took under two minutes from merge to healthy. Most of that is Argo CD waiting for its next poll; the rollout itself took under 30 seconds, without ever dropping below two ready pods.
+In a lab session on 2026-10-03, both took under two minutes from merge to healthy. Most of that is Argo CD waiting for its next poll; the rollout itself took under 30 seconds, without ever dropping below two ready pods.
 
 Do not use `kubectl rollout undo` or edit objects by hand: self-heal puts Git's version back within seconds.
 
@@ -370,7 +371,7 @@ It needs kubectl with credentials for the staging cluster, Git, and curl, and re
 | Developer access | The `staging-developers` group can list Pods but cannot read secrets or exec |
 | HTTPS | The route's hostname answers 200 through the Gateway |
 
-The only object it creates is the temporary namespace, which it deletes on exit. Exit codes: `0` when every check passes, `1` when a check fails, and `2` when a tool or the cluster is missing. The identity refusal tests and disruptive exercises, such as load and node drains, run separately.
+The only object it creates is the temporary namespace, which it deletes on exit. Exit codes: `0` when every check passes, `1` when a check fails, and `2` when a tool or the cluster is missing. The identity refusal tests and disruptive exercises, such as load and node drains, run separately. To investigate an alert or drain a node, see the [operations guide](operations.md).
 
 
 
