@@ -15,6 +15,7 @@ class Settings:
     environment: str
     release_version: str
     port: int = 8080
+    metrics_port: int = 9090
     log_level: str = "INFO"
     secret_file: str | None = None
 
@@ -30,11 +31,16 @@ class Settings:
                 raise ConfigurationError(f"{name} must not contain control characters")
             return value.strip()
 
-        port = text("APP_PORT", "8080")
-        if not port.isascii() or not port.isdigit() or len(port) > 5:
-            raise ConfigurationError("APP_PORT must be an integer from 1 to 65535")
-        if not 1 <= int(port) <= 65535:
-            raise ConfigurationError("APP_PORT must be an integer from 1 to 65535")
+        def port(name: str, default: str) -> int:
+            value = text(name, default)
+            if not value.isascii() or not value.isdigit() or len(value) > 5 or not 1 <= int(value) <= 65535:
+                raise ConfigurationError(f"{name} must be an integer from 1 to 65535")
+            return int(value)
+
+        app_port = port("APP_PORT", "8080")
+        metrics_port = port("METRICS_PORT", "9090")
+        if metrics_port == app_port:
+            raise ConfigurationError("METRICS_PORT must differ from APP_PORT")
 
         log_level = text("LOG_LEVEL", "INFO").upper()
         if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
@@ -44,7 +50,8 @@ class Settings:
             service_name=text("SERVICE_NAME", "platform-verification-api"),
             environment=text("ENVIRONMENT"),
             release_version=text("RELEASE_VERSION"),
-            port=int(port),
+            port=app_port,
+            metrics_port=metrics_port,
             log_level=log_level,
             secret_file=None if values.get("SECRET_FILE") is None else text("SECRET_FILE"),
         )

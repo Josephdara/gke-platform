@@ -5,6 +5,7 @@ import sys
 
 import uvicorn
 from fastapi import FastAPI
+from prometheus_client import start_http_server
 
 from .app import create_app
 from .config import ConfigurationError, Settings
@@ -32,4 +33,9 @@ def main() -> None:
         print(json.dumps({"severity": "ERROR", "event": "configuration_error", "message": str(exc)}), file=sys.stderr)
         raise SystemExit(2) from None
 
-    build_server(create_app(settings), settings).run()
+    server = build_server(create_app(settings), settings)
+    start_http_server(settings.metrics_port)
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        raise SystemExit(130) from None
