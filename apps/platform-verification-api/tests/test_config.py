@@ -9,16 +9,18 @@ def test_defaults():
     settings = Settings.from_env(BASE)
     assert settings.service_name == "platform-verification-api"
     assert settings.port == 8080
+    assert settings.metrics_port == 9090
     assert settings.log_level == "INFO"
     assert settings.secret_file is None
 
 
 def test_overrides():
-    settings = Settings.from_env({**BASE, "SERVICE_NAME": "other-service", "APP_PORT": "9000", "LOG_LEVEL": "debug"})
+    settings = Settings.from_env({**BASE, "SERVICE_NAME": "other-service", "APP_PORT": "9000", "METRICS_PORT": "9100", "LOG_LEVEL": "debug"})
     assert settings.service_name == "other-service"
     assert settings.environment == "test"
     assert settings.release_version == "release-123"
     assert settings.port == 9000
+    assert settings.metrics_port == 9100
     assert settings.log_level == "DEBUG"
 
 
@@ -37,10 +39,16 @@ def test_invalid_text(field, value):
         Settings.from_env({**BASE, field: value})
 
 
+@pytest.mark.parametrize("field", ["APP_PORT", "METRICS_PORT"])
 @pytest.mark.parametrize("value", ["", "0", "65536", "-1", "1.5", "abc", "１２３", "9" * 5000])
-def test_invalid_port(value):
-    with pytest.raises(ConfigurationError, match="APP_PORT"):
-        Settings.from_env({**BASE, "APP_PORT": value})
+def test_invalid_port(field, value):
+    with pytest.raises(ConfigurationError, match=field):
+        Settings.from_env({**BASE, field: value})
+
+
+def test_metrics_port_must_differ_from_app_port():
+    with pytest.raises(ConfigurationError, match="METRICS_PORT"):
+        Settings.from_env({**BASE, "APP_PORT": "9090"})
 
 
 @pytest.mark.parametrize("value", ["1", "65535"])

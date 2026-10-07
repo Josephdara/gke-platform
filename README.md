@@ -47,7 +47,7 @@ It runs in my personal GCP project `gke-build-proj` as a temporary staging envir
 
 What works today:
 
-- **Service:** health routes, validated configuration, JSON logs with request IDs, and graceful shutdown. Its image runs as non-root user `10001` with a read-only root filesystem and no capabilities, and passes my Trivy gate for fixable MEDIUM, HIGH, and CRITICAL vulnerabilities.
+- **Service:** health routes, validated configuration, JSON logs with request IDs, Prometheus request metrics on a separate port, and graceful shutdown. Its image runs as non-root user `10001` with a read-only root filesystem and no capabilities, and passes my Trivy gate for fixable MEDIUM, HIGH, and CRITICAL vulnerabilities.
 - **Chart:** deploys one HTTP service with restricted pod security, digest-only images, probes, an autoscaler, a disruption budget, and rolling updates with zero unavailable pods. A values schema and template checks reject bad input before anything reaches a cluster. I deployed it on Docker Desktop Kubernetes into a namespace that enforces the "restricted" profile.
 - **GCP:** Terraform manages the persistent resources, and a private GKE cluster that I create and remove in each lab session.
 - **Pipeline:** Cloud Build tests, builds, and scans the API image on every pull request. Merges that change the API publish an image tagged with its commit, with provenance, a scan report, and an SBOM; a failed check means nothing is pushed.
@@ -60,7 +60,6 @@ What works today:
 Planned changes to the service and chart:
 
 - Consistency checks across rendered resources (selectors, port names, and resource references), and a recorded format for Trivy exceptions.
-- A fix for the `KeyboardInterrupt` traceback after Ctrl+C.
 
 `values-staging.yaml` points at an image the pipeline published. To choose a different one, see [Promoting an image to staging](pipeline/README.md#promoting-an-image-to-staging).
 

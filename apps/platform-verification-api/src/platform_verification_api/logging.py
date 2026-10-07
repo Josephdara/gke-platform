@@ -13,6 +13,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .config import Settings
+from .metrics import record_request
 
 REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 # Kubernetes probes call these every few seconds; successful checks are logged at DEBUG.
@@ -118,13 +119,16 @@ class RequestLoggingMiddleware:
                 raise
             await JSONResponse({"detail": "Internal server error"}, status_code=500)(scope, receive, respond)
         finally:
+            elapsed = time.perf_counter() - started
+            if scope["path"] not in HEALTH_PATHS:
+                record_request(scope, status, elapsed)
             level = request_level(scope["path"], status, error_type is not None)
             fields = {
                 "request_id": request_id,
                 "method": scope["method"],
                 "path": scope["path"],
                 "status": status,
-                "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+                "duration_ms": round(elapsed * 1000, 3),
             }
             if error_type:
                 fields["error_type"] = error_type
