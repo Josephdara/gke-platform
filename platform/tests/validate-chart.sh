@@ -2,6 +2,7 @@
 # Validates the API tests and the shared service chart: rendering with
 # Kubernetes schema checks, invalid inputs that must fail for the expected
 # reason, and the admission policy fixtures. Usage: platform/tests/validate-chart.sh
+# Set SKIP_APP_TESTS=1 to skip the application tests.
 # Exit codes: 0 all checks passed, 1 a check failed, 2 setup problem.
 set -euo pipefail
 
@@ -37,8 +38,10 @@ fail() {
 echo "helm $(helm version --short), kubeconform $(kubeconform -v), kyverno $(kyverno version | sed -n 's/^Version: //p'), Kubernetes schemas $KUBERNETES_VERSION"
 echo
 
-# 1. Application tests.
-if [ ! -x "$APP/.venv/bin/python" ]; then
+# 1. Application tests. CI sets SKIP_APP_TESTS because its own test step runs them.
+if [ -n "${SKIP_APP_TESTS:-}" ]; then
+  printf 'SKIP  app tests: SKIP_APP_TESTS is set\n'
+elif [ ! -x "$APP/.venv/bin/python" ]; then
   fail "app tests: $APP/.venv is missing; create it as described in the README"
 elif (cd "$APP" && .venv/bin/python -m pytest -q) > "$WORK/pytest.log" 2>&1; then
   pass "app tests: $(tail -n 1 "$WORK/pytest.log")"

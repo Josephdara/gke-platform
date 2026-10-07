@@ -32,6 +32,25 @@ steps:
       - --ignorefile=apps/platform-verification-api/.trivyignore.yaml
       - --exit-code=1
 
+  - id: tools
+    name: python:3.14.8-slim-bookworm@sha256:c8137f4c460908c8763f281c8f22c431eb5c538514ba9553fc3a89c06b7cfb88
+    waitFor: ['-']
+    args: [python, pipeline/install_tools.py, /workspace/bin]
+
+  - id: chart
+    name: python:3.14.8-slim-bookworm@sha256:c8137f4c460908c8763f281c8f22c431eb5c538514ba9553fc3a89c06b7cfb88
+    waitFor: [tools]
+    entrypoint: bash
+    env: [PATH=/workspace/bin:/usr/local/bin:/usr/bin:/bin, SKIP_APP_TESTS=1]
+    args: [platform/tests/validate-chart.sh]
+
+  - id: terraform
+    name: python:3.14.8-slim-bookworm@sha256:c8137f4c460908c8763f281c8f22c431eb5c538514ba9553fc3a89c06b7cfb88
+    waitFor: [tools]
+    entrypoint: bash
+    env: [PATH=/workspace/bin:/usr/local/bin:/usr/bin:/bin]
+    args: [infra/tests/validate-terraform.sh]
+
 timeout: 1200s
 
 options:
