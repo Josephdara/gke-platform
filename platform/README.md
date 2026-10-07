@@ -72,7 +72,7 @@ Kyverno 1.19.1 checks every Pod created in `staging`, and every Deployment, Stat
 | `restrict-pod-security` | Host network, PID, or IPC; hostPath volumes; privileged containers; privilege escalation; capabilities not dropped, or added; running as root; no seccomp profile |
 | `require-read-only-root-filesystem` | A writable root filesystem |
 
-Each rejection message names the field and the fix. The policies select the `staging` namespace by name, so Argo CD, Kyverno, and GKE's system namespaces are never checked. They fail closed: if Kyverno is unavailable, Pods in `staging` are refused rather than admitted unchecked. They start in Audit mode, which records violations in policy reports without blocking, and switch to Deny once a session shows the running workloads pass.
+Each rejection message names the field and the fix. The policies select the `staging` namespace by name, so Argo CD, Kyverno, and GKE's system namespaces are never checked. They fail closed: if Kyverno is unavailable, Pods in `staging` are refused rather than admitted unchecked. They block violations (Deny). They ran in Audit mode first, which records violations in policy reports without blocking, until a lab session showed the running workloads pass.
 
 `platform/tests/policies/` holds the fixtures: the chart's staging Deployment, which passes every policy, and seven copies that each break exactly one. Check 6 of the [validation script](#validating-the-chart) runs them with `kyverno test`. A test Pod in `staging` must meet every policy, including the labels and the service's own service account.
 
