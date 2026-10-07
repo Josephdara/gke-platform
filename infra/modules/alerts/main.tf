@@ -5,7 +5,7 @@ data "google_monitoring_notification_channel" "email" {
 }
 
 locals {
-  guide    = "See https://github.com/Josephdara/gke-platform/blob/main/platform/operations.md#investigating-an-unhealthy-service."
+  guide    = "See https://github.com/Josephdara/gke-platform/blob/main/RUNBOOK.md#investigate-an-alert."
   requests = "sum by (namespace, job) (rate(http_requests_total{namespace=\"${var.environment}\"}[2m]))"
   alerts = {
     no-ready-replicas = {
