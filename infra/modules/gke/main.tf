@@ -73,9 +73,9 @@ resource "google_container_cluster" "super" {
   }
 
   monitoring_config {
-    enable_components = ["SYSTEM_COMPONENTS"]
+    enable_components = ["SYSTEM_COMPONENTS", "DEPLOYMENT"]
     managed_prometheus {
-      enabled = false
+      enabled = true
     }
   }
 

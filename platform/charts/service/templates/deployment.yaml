@@ -1,6 +1,7 @@
 {{- include "service.validateResources" . }}
 {{- include "service.validateSecrets" . }}
 {{- include "service.validateReplicas" . }}
+{{- include "service.validatePorts" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,6 +42,11 @@ spec:
             - name: app-http
               containerPort: {{ .Values.containerPort }}
               protocol: TCP
+            {{- with .Values.metrics }}
+            - name: metrics
+              containerPort: {{ .port }}
+              protocol: TCP
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "service.fullname" . }}

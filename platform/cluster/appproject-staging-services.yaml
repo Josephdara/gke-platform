@@ -31,3 +31,5 @@ spec:
       kind: NetworkPolicy
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
+    - group: monitoring.googleapis.com
+      kind: PodMonitoring

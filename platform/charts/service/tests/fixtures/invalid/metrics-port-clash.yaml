@@ -1,0 +1,3 @@
+# expect: metrics.port (8080) equals containerPort
+metrics:
+  port: 8080
