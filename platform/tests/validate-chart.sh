@@ -56,7 +56,7 @@ check_valid() {
   shift 2
   if ! helm template validate "$CHART" --namespace "$namespace" "$@" > "$WORK/$name.yaml" 2> "$WORK/$name.err"; then
     fail "$name: render" "$WORK/$name.err"
-  elif kubeconform -strict -summary -skip SecretProviderClass,HTTPRoute -kubernetes-version "$KUBERNETES_VERSION" \
+  elif kubeconform -strict -summary -skip SecretProviderClass,HTTPRoute,PodMonitoring -kubernetes-version "$KUBERNETES_VERSION" \
       -cache "$KUBECONFORM_CACHE" "$WORK/$name.yaml" > "$WORK/$name.kubeconform" 2>&1; then
     pass "$name: render and schema ($(tail -n 1 "$WORK/$name.kubeconform"))"
   else

@@ -38,11 +38,12 @@ Persistent resources stay between sessions and are protected against deletion. L
 | DNS and certificate | Zone `staging-dns` for `gke.josephdara.com`, with DNSSEC; certificate `staging-api-cert` for `api.staging.gke.josephdara.com`, validated through DNS authorization `staging-api-dns-auth`; certificate map `staging-cert-map`. All protected against deletion | Persistent |
 | Network | `staging-vpc`; subnet `staging-nodes-subnet` (10.40.0.0/24, pods 10.41.0.0/20, services 10.42.0.0/24) with Private Google Access | Lab |
 | Outbound access | `staging-router` and `staging-nat` | Lab |
-| Cluster | `staging-super-cluster`: zonal in us-east4-b, Regular channel from 1.36, private nodes, DNS endpoint only, NodeLocal DNSCache, no RBAC bindings to `system:authenticated` or `system:unauthenticated` | Lab |
+| Cluster | `staging-super-cluster`: zonal in us-east4-b, Regular channel from 1.36, private nodes, DNS endpoint only, NodeLocal DNSCache, managed Prometheus collection with Deployment kube state metrics, no RBAC bindings to `system:authenticated` or `system:unauthenticated` | Lab |
 | Node pool | `staging-super-pool`: 2 to 3 e2-standard-2 nodes, 30 GB pd-balanced disks | Lab |
 | Gateway address | Global static IP `staging-gateway-ip`, and the A record `api.staging.gke.josephdara.com` pointing to it | Lab |
+| Alert policies | `staging-no-ready-replicas`, `staging-error-rate`, and `staging-latency`, which email the `staging-alerts` channel; see [Alert email channel](#alert-email-channel) | Lab |
 
-Terraform does not manage the budget or the billing export; both are set up by hand in the console. See [Budget and billing export](#budget-and-billing-export).
+Terraform does not manage the budget, the billing export, or the alert email channel; all three are set up by hand in the console. See [Budget and billing export](#budget-and-billing-export) and [Alert email channel](#alert-email-channel).
 
 ## Sessions
 
@@ -229,6 +230,10 @@ Turn this on before your first session, so cost data covers it.
 1. In BigQuery, create a dataset named `gke_build_proj_staging_billing` in the `US` multi-region. A multi-region dataset receives data from the start of the previous month; a regional dataset only receives data from the day the export is turned on.
 2. Under Billing, then Billing export, turn on **Detailed usage cost** export to that project and dataset. Google adds its export account as an owner of the dataset automatically.
 3. Data starts arriving within a few hours.
+
+## Alert email channel
+
+The alert policies send email through a Cloud Monitoring notification channel that I create by hand, so the address never appears in this public repository. Create it once, before the first plan with the lab on: under Monitoring, then Alerting, then Edit notification channels, add an Email channel with the display name `staging-alerts`. Terraform looks the channel up by that name, so a plan with the lab on fails if no channel has it.
 
 ## Validation
 

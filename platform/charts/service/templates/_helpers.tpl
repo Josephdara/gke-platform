@@ -63,6 +63,12 @@ Requests must not exceed limits. The schema restricts units to m and Mi, so the 
 {{- end -}}
 {{- end -}}
 
+{{- define "service.validatePorts" -}}
+{{- if and .Values.metrics (eq (int .Values.metrics.port) (int .Values.containerPort)) -}}
+{{- fail (printf "metrics.port (%d) equals containerPort. Serve metrics on a separate port." (int .Values.metrics.port)) -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "service.validateReplicas" -}}
 {{- if gt (int .Values.replicas.min) (int .Values.replicas.max) -}}
 {{- fail (printf "replicas.min (%d) is above replicas.max (%d). Lower min or raise max." (int .Values.replicas.min) (int .Values.replicas.max)) -}}

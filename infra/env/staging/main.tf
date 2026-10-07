@@ -110,3 +110,11 @@ module "gke" {
   node_service_account_email = module.identity.node_service_account_email
   labels                     = { component = "gke" }
 }
+
+module "alerts" {
+  source = "../../modules/alerts"
+  count  = var.lab_enabled ? 1 : 0
+
+  project_id  = var.project_id
+  environment = var.environment
+}

@@ -3,7 +3,7 @@ name: service
 description: "Shared platform chart that deploys one HTTP service by image digest, with fixed security, health probe, and rollout settings."
 type: application
 
-version: 1.0.0
+version: 1.1.0
 maintainers:
   - name: "josephdara"
     url: "https://josephdara.com"

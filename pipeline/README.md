@@ -54,7 +54,7 @@ IMG=us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platfor
 The digest behind its tag:
 
 ```sh
-gcloud artifacts docker images describe $IMG:sha-${FULL:0:7} --format="value(image_summary.digest)"
+gcloud artifacts docker images describe ${IMG}:sha-${FULL:0:7} --format="value(image_summary.digest)"
 ```
 
 Its evidence, which must list `scan.json` and `sbom.cdx.json`:
@@ -66,7 +66,7 @@ gcloud storage ls gs://gke-build-proj-staging-build-evidence/platform-verificati
 Its provenance, which names the commit and the `staging-main-publish` trigger:
 
 ```sh
-gcloud artifacts docker images describe $IMG:sha-${FULL:0:7} --show-provenance --format=json | grep -E "$FULL|staging-main-publish" | sort -u
+gcloud artifacts docker images describe ${IMG}:sha-${FULL:0:7} --show-provenance --format=json | grep -E "$FULL|staging-main-publish" | sort -u
 ```
 
 Recent publish builds, with their commits and digests:

@@ -86,6 +86,20 @@
         "hostname": { "type": "string", "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?\\.)+[a-z]{2,63}$" }
       }
     },
+    "metrics": {
+      "description": "Has the environment's Prometheus collectors scrape the application's metrics port, and admits only them to it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port"],
+      "properties": {
+        "port": {
+          "description": "Port the application serves Prometheus metrics on. Must differ from containerPort.",
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535
+        }
+      }
+    },
     "secrets": {
       "description": "Secret Manager secrets mounted read-only. A secret mounts only if Terraform grants it to this service's KSA.",
       "type": "array",

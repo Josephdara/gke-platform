@@ -1,4 +1,4 @@
-{{- if .Values.httpRoute }}
+{{- if or .Values.httpRoute .Values.metrics }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -13,6 +13,7 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    {{- if .Values.httpRoute }}
     - from:
         - ipBlock:
             cidr: 130.211.0.0/22
@@ -21,4 +22,14 @@ spec:
       ports:
         - protocol: TCP
           port: app-http
+    {{- end }}
+    {{- if .Values.metrics }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gmp-system
+      ports:
+        - protocol: TCP
+          port: metrics
+    {{- end }}
 {{- end }}

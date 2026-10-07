@@ -3,8 +3,8 @@ environment: staging
 
 image:
   repository: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/platform-verification-api
-  digest: "sha256:5eefe9ae99fadc5b0837e468a38acd83bcd386a586b3da85d8a1f011caf60aa3"
-releaseVersion: "sha-4f848fc"
+  digest: "sha256:daba5ff446f0051d31c31e6ae29fcbcc8e5d70ae81b74e312a9612656378b7b0"
+releaseVersion: "sha-d1b3f48"
 
 secrets:
   - name: staging-platform-verification-api-demo
@@ -12,3 +12,6 @@ secrets:
 
 httpRoute:
   hostname: api.staging.gke.josephdara.com
+
+metrics:
+  port: 9090
