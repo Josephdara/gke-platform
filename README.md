@@ -35,6 +35,7 @@ A release is a pull request that changes one image digest in `values-staging.yam
 | To | Read |
 | --- | --- |
 | Build, run, or tear down the platform | [Runbook](RUNBOOK.md) |
+| Understand how each component works, and why | [Guide](GUIDE.md) |
 | Test the Python service, or build and run its image | [Applications README](apps/README.md) |
 | Validate the Helm chart, or deploy it on Docker Desktop | [Platform README](platform/README.md) |
 | Bootstrap GCP, apply Terraform, or run a lab session | [Infrastructure README](infra/README.md) |
@@ -61,6 +62,7 @@ The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a runn
 | [`platform/evidence/`](platform/evidence/) | Reports from lab sessions; see the [index](platform/evidence/README.md) |
 | [`infra/`](infra/) | GCP bootstrap, Terraform root and modules, and Terraform validation |
 | [`RUNBOOK.md`](RUNBOOK.md) | Setup, lab sessions, releases, operations, and teardown, with commands |
+| [`GUIDE.md`](GUIDE.md) | How each component works, how it is configured, and why |
 | [`architecture.md`](architecture.md) | Architecture and design decisions |
 | [`pipeline/`](pipeline/) | Cloud Build configuration that tests, builds, scans, and publishes the API image. See its [README](pipeline/README.md) |
 
