@@ -34,6 +34,7 @@ A release is a pull request that changes one image digest in `values-staging.yam
 
 | To | Read |
 | --- | --- |
+| Read how I built it, the design decisions, and the failure tests | [Building a Secure Kubernetes Platform on GKE: Design Decisions, GitOps, and Failure Testing](https://josephdara.hashnode.dev/gke-platform-1) |
 | Build, run, or tear down the platform | [Runbook](RUNBOOK.md) |
 | Understand how each component works, and why | [Guide](GUIDE.md) |
 | Test the Python service, or build and run its image | [Applications README](apps/README.md) |
@@ -76,7 +77,7 @@ The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a runn
 | Image build pipeline: Cloud Build, recorded digests | Done |
 | GitOps deployment: Argo CD from Git | Done |
 | Identity, secrets, and namespace isolation | Done |
-| Admission policies, chart 1.0.0, and HTTPS | Done |
+| Admission policies, chart 1.1.0, and HTTPS | Done |
 | Validation suite: pull request CI and live checks | Done |
 | Observability: metrics and email alerts | Done |
 | Acceptance tests: load, autoscaling, Pod failure, node drain | Done; a node upgrade rehearsal is still open |
