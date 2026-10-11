@@ -11,3 +11,5 @@ terraform.tfvars
 crash.log
 crash.*.log
 /platform-concepts-guide.md
+/ai-workload-plan.md
+
