@@ -8,12 +8,16 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | Path                                                                         | Contents                                                                                                                    |
 | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | [`charts/service/`](charts/service/)                                         | Shared Helm chart that deploys one HTTP service                                                                             |
+| [`charts/model-server/`](charts/model-server/) | Helm chart that deploys one model server; see [Model-server chart](#model-server-chart) |
 | [`services/platform-verification-api/`](services/platform-verification-api/) | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml`    |
+| [`services/llm-cpu/`](services/llm-cpu/), [`services/embeddings/`](services/embeddings/) | Model-server chart values for the chat model and the embedding model: `values.yaml` plus `values-staging.yaml` |
+| [`profiles/`](profiles/) | One folder per session profile. The `staging-profile` root Application syncs the active one; `cpu/` holds the llm-cpu Application |
 | [`namespaces/`](namespaces/)                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                |
-| [`tests/`](tests/)                                                           | Chart validation and live-check scripts; the chart fixtures live in `charts/service/tests/fixtures/`, and the policy fixtures in `tests/policies/` |
+| [`tests/`](tests/)                                                           | Chart validation and live-check scripts; each chart's fixtures live in its own `tests/fixtures/`, and the policy fixtures in `tests/policies/` |
 | [`argocd/`](argocd/)                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
 | [`kyverno/`](kyverno/) | Kyverno install overlay: the pinned upstream manifest with images from the mirror repository |
-| [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` and `staging-inference` namespaces and their guardrails, the admission policies, the projects, the Kyverno Application, and one Application per service |
+| [`custom-metrics/`](custom-metrics/) | Custom Metrics Stackdriver Adapter overlay, which exposes Managed Prometheus series to the HPA, with its image from the mirror repository |
+| [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` and `staging-inference` namespaces and their guardrails, the admission policies, the projects, the controller Applications, and one Application per service that runs in every profile |
 | [`mirror/`](mirror/) | Third-party inference images pinned by digest, and `mirror.sh`, which copies them into the mirror repository and scans them |
 | [`evidence/`](evidence/)                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results; see the [index](evidence/README.md) |
 
@@ -309,6 +313,25 @@ docker stop local-registry
 
 
 
+## Model-server chart
+
+[`charts/model-server/`](charts/model-server/) deploys one model server into `<environment>-inference`: llama.cpp for the chat model, or Text Embeddings Inference (TEI) for the embedding model. It is separate from the service chart, because a model server needs a model download, a long startup, inference limits, and a rollout that never asks for a second node. Version 0.1.0 has not run in a cluster yet.
+
+What it renders, and why:
+
+| Behavior | Reason |
+| --- | --- |
+| An init container, `fetch-model`, downloads every file in the values' `model.files` from the models bucket and checks each size and SHA-256 | A Pod never starts with the wrong model. It runs a short standard-library script from `files/fetch_model.py` in the mirrored distroless Python image, with a token from the GKE metadata server for the Pod's own Kubernetes service account |
+| Rollouts with no surge and one unavailable Pod, and required anti-affinity on the `cpu` pool | A release never needs a node beyond the pool's two-node cap |
+| A startup probe sized from `startup.maxSeconds`, and a liveness probe that waits a minute | Loading a model takes minutes, and a busy server must not be restarted |
+| A preStop hook and a 150-second termination grace period | llama.cpp stops at once on SIGTERM, so the hook first lets the Pod leave the Service, then waits until `llamacpp:requests_processing` is 0. TEI only waits 10 seconds |
+| Server arguments built from `limits` | Every server has context and concurrency limits. For llama.cpp, `--n-predict` sets the output limit only as a default: a request's `max_tokens` can raise it, so the hard bound per request is its slot (`contextTokens` ÷ `concurrentSequences`, 4,096 tokens for llm-cpu), and the caller enforces the output cap. llama.cpp also runs with `--metrics`, `--no-slots` (the slots endpoint would expose prompts), and `--no-webui` |
+| Pod labels `component: model-server`, `model`, and `model-revision`, and the annotation `model-sha256`, a fingerprint of the file list | `require-model-provenance` refuses a serving image without them |
+| An HPA on Pods metrics from the custom metrics adapter, when `autoscaling.enabled` is true | Capacity is limited by queued requests, not CPU |
+| A NetworkPolicy that admits only `callers` and the Managed Prometheus collectors | Only listed clients reach a model server |
+
+The values schema rejects unknown keys and limits `autoscaling.max` to 2. Each service's `model` block repeats its manifest in [`models/`](../models/); `validate-chart.sh` checks that they match.
+
 ## Validating the chart
 
 One command runs the application tests and every chart check, and prints `PASS` or `FAIL` for each:
@@ -325,14 +348,14 @@ What it checks:
 | #   | Check           | Passes when                                                                                                                                                                         |
 | --- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | App tests       | The pytest suite in `apps/platform-verification-api/` passes                                                                                                                        |
-| 2   | Staging         | `values.yaml` + `values-staging.yaml` renders and passes kubeconform in strict mode, so unknown or misspelled fields fail                                                           |
-| 3   | Local           | `values.yaml` + `values-local.yaml` renders and passes kubeconform in strict mode                                                                                                   |
-| 4   | Invalid inputs  | Every file in `platform/charts/service/tests/fixtures/invalid/`, layered on the staging configuration, fails to render with the text on its first line. A failure names the fixture |
-| 5   | Wrong namespace | Rendering into `default` is refused                                                                                                                                                 |
-| 6   | Policy fixtures | `kyverno test platform/tests/policies` gets every expected pass and fail |
+| 2   | Valid renders   | The API's staging and local values, and the llm-cpu and embeddings values with the model-server chart, render and pass kubeconform in strict mode, so unknown or misspelled fields fail |
+| 3   | Invalid inputs  | Every file in each chart's `tests/fixtures/invalid/`, layered on a valid configuration, fails to render with the text on its first line. A failure names the fixture |
+| 4   | Wrong namespace | Rendering the service chart into `default` is refused                                                                                                                              |
+| 5   | Model values    | Each model server's values name the same revision, bucket path, and files (path, size, SHA-256) as its manifest in `models/` |
+| 6   | Policy fixtures | `kyverno test platform/tests/policies` gets every expected pass and fail, and every expected result is actually evaluated. The Kyverno CLI counts a policy that does not cover a fixture's namespace as a pass, so the script counts the evaluated results and names any that are missing |
 
 
-The eight fixtures cover each way the chart rejects input: a missing field (`missing-owner`), a malformed value (`short-digest`), an unknown field (`unknown-key`), a name over 63 characters (`name-too-long`), a request above its limit (`cpu-request-above-limit`), a secret variable that does not end in `_FILE` (`secret-env-not-file`), replica bounds the wrong way round (`replicas-inverted`), and a metrics port equal to the application port (`metrics-port-clash`).
+The service chart's eight fixtures cover each way it rejects input: a missing field (`missing-owner`), a malformed value (`short-digest`), an unknown field (`unknown-key`), a name over 63 characters (`name-too-long`), a request above its limit (`cpu-request-above-limit`), a secret variable that does not end in `_FILE` (`secret-env-not-file`), replica bounds the wrong way round (`replicas-inverted`), and a metrics port equal to the application port (`metrics-port-clash`).
 
 Exit codes: `0` when every check passes, `1` when a check fails, and `2` when a tool is missing.
 
@@ -340,12 +363,12 @@ The Kubernetes schemas are pinned to version 1.36.4 (the `KUBERNETES_VERSION` va
 
 kubeconform skips SecretProviderClass, HTTPRoute, and PodMonitoring, because it has no schema for these custom resources; the secret list inside a SecretProviderClass is a YAML string that no schema could check anyway. Argo CD's sync checks them in the cluster.
 
-To add an invalid fixture, create a small values file in `platform/charts/service/tests/fixtures/invalid/` that changes one input, and make its first line `# expect: <text the error must contain>`. Match a short, stable part of the message, such as the field path.
+To add an invalid fixture, create a small values file in the chart's `tests/fixtures/invalid/` that changes one input, and make its first line `# expect: <text the error must contain>`. Match a short, stable part of the message, such as the field path.
 
 A passing run ends with:
 
 ```text
-6 passed, 0 failed
+10 passed, 0 failed
 ```
 
 Pull request CI runs the same script with `SKIP_APP_TESTS=1`, because the pipeline's `test` step already runs the application tests; see the [pipeline README](../pipeline/README.md#what-a-build-does).

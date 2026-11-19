@@ -1,0 +1,69 @@
+# Shared values for the embedding server. Render with values-staging.yaml.
+project: gke-build-proj
+serviceName: embeddings
+owner: jd
+
+runtime: tei
+pool: general
+
+server:
+  threads: 1
+
+# Copied from models/bge-small-en-v1.5.yaml; validate-chart.sh checks they match.
+model:
+  name: bge-small-en-v1.5
+  revision: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+  bucket: gke-build-proj-staging-models
+  bucketPath: models/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/
+  servedName: assistant-embeddings
+  files:
+    - path: model.safetensors
+      sizeBytes: 133466304
+      sha256: 3c9f31665447c8911517620762200d2245a2518d6e7208acc78cd9db317e21ad
+    - path: config.json
+      sizeBytes: 743
+      sha256: 094f8e891b932f2000c92cfc663bac4c62069f5d8af5b5278c4306aef3084750
+    - path: tokenizer.json
+      sizeBytes: 711396
+      sha256: d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66
+    - path: tokenizer_config.json
+      sizeBytes: 366
+      sha256: 9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3
+    - path: special_tokens_map.json
+      sizeBytes: 125
+      sha256: b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3
+    - path: modules.json
+      sizeBytes: 349
+      sha256: 84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf
+    - path: 1_Pooling/config.json
+      sizeBytes: 190
+      sha256: d1caf60c96f5fba2157c0c26b76d80818fad6cf0b8eb5e73ec372ff9818eba5c
+
+# The output and context limits do not apply to an embedding model; the
+# chart passes only the concurrency limit to TEI.
+limits:
+  contextTokens: 512
+  concurrentSequences: 8
+  maxOutputTokens: 1
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1024Mi
+    ephemeralStorage: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+    ephemeralStorage: 1024Mi
+
+startup:
+  maxSeconds: 180
+  downloadTimeoutSeconds: 180
+
+replicas: 1
+
+callers:
+  - namespace: staging
+    service: rag-api
+  - namespace: staging-inference
+    service: ingest

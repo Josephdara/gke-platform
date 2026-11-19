@@ -11,7 +11,7 @@ locals {
     no-ready-replicas = {
       severity = "CRITICAL"
       duration = "120s"
-      query    = "sum by (deployment) (kube_deployment_status_replicas_available{deployment=~\"${var.environment}-.+\"}) < 1"
+      query    = "sum by (deployment) (kube_deployment_status_replicas_available{namespace=\"${var.environment}\",deployment=~\"${var.environment}-.+\"}) < 1"
       content  = "A Deployment in `${var.environment}` has had no available replicas for 2 minutes, so its service cannot answer. Likely causes: a release whose Pods crash or fail readiness, a secret the service cannot mount, or Pods that cannot be scheduled."
     }
     error-rate = {

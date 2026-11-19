@@ -40,16 +40,16 @@ images:
     decision: accepted
     reason: The critical finding is in the Go standard library of a helper binary. The database has no route and accepts connections only from rag-api and ingest.
     reviewBy: 2026-12-31
-  - source: gcr.io/google.com/cloudsdktool/cloud-sdk:587.0.0-slim
-    digest: sha256:7c2dbc4eeba1e500b788be19cae33599cefe3294949a62c034bd1c2002329f69
-    target: google.com/cloudsdktool/cloud-sdk:587.0.0-slim
-    purpose: Cloud SDK for the model-server init container that copies and verifies model files
-    scanned: 2026-11-18
-    report: inference/mirror/2026-11-18/google.com_cloudsdktool_cloud-sdk_587.0.0-slim.json
-    fixable: 5 critical, 132 high, 1080 medium
-    decision: replace
-    reason: Too many material findings for a job that only copies and checks files. The model-server chart's init container is to use a smaller image; no workload uses this one.
-    reviewBy: 2026-11-25
+  - source: gcr.io/distroless/python3-debian13:nonroot
+    digest: sha256:6c4cb3bfa4b555429dd19541796a6ba6b30c84675b460bd0bd5072f7d5bdae71
+    target: distroless/python3-debian13:nonroot
+    purpose: Python runtime for the model-server chart's init container, which downloads and verifies model files
+    scanned: 2026-11-19
+    report: inference/mirror/2026-11-19/distroless_python3-debian13_nonroot.json
+    fixable: 0 critical, 0 high, 0 medium
+    decision: accepted
+    reason: No fixable findings. It has no shell or package manager, and it runs only the chart's download script with read-only access to the models bucket.
+    reviewBy: 2026-12-31
   - source: gcr.io/gke-release/custom-metrics-stackdriver-adapter:v0.16.12-gke.4
     digest: sha256:6773160c63486991f0332b7d3beb0eb45d767755b617592cb22866d09d34bd9d
     target: gke-release/custom-metrics-stackdriver-adapter:v0.16.12-gke.4

@@ -1224,3 +1224,638 @@ spec:
           readOnly: true
           volumeAttributes:
             secretProviderClass: staging-platform-verification-api
+---
+# The model-server chart's llm-cpu Deployment, rendered from its values, passes every policy; the two copies each drop what one inference policy requires.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: staging-llm-cpu
+  namespace: staging-inference
+  labels:
+    app.kubernetes.io/name: "llm-cpu"
+    app.kubernetes.io/instance: "staging-llm-cpu"
+    project: "gke-build-proj"
+    environment: "staging"
+    service: "llm-cpu"
+    owner: "jd"
+    app.kubernetes.io/version: "server-b12464"
+    app.kubernetes.io/managed-by: "Helm"
+    helm.sh/chart: "model-server-0.1.0"
+spec:
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "llm-cpu"
+      app.kubernetes.io/instance: "staging-llm-cpu"
+  # A release never asks for a node or GPU beyond the pool's cap.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "llm-cpu"
+        app.kubernetes.io/instance: "staging-llm-cpu"
+        project: "gke-build-proj"
+        environment: "staging"
+        service: "llm-cpu"
+        owner: "jd"
+        app.kubernetes.io/version: "server-b12464"
+        app.kubernetes.io/managed-by: "Helm"
+        helm.sh/chart: "model-server-0.1.0"
+        component: model-server
+        model: "qwen2.5-1.5b-instruct-q4-k-m"
+        model-revision: "91cad51170dc346986eccefdc2dd33a9da36ead9"
+      annotations:
+        model-sha256: "67875cf7277daeb06945badce604b2f7405a3903987b4747b488d2e554af8058"
+        checksum/fetch: 4de37d00b395176e30ca49a01da1e281527cbf8d46d746a4612e63ba6340f390
+    spec:
+      serviceAccountName: staging-llm-cpu
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 150
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        workload-class: llm-cpu
+      tolerations:
+        - key: workload-class
+          operator: Equal
+          value: llm-cpu
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: "llm-cpu"
+                  app.kubernetes.io/instance: "staging-llm-cpu"
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: fetch-model
+          image: "us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/distroless/python3-debian13@sha256:6c4cb3bfa4b555429dd19541796a6ba6b30c84675b460bd0bd5072f7d5bdae71"
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/python3.13", "/opt/fetch/fetch_model.py"]
+          env:
+            - name: MODEL_BUCKET
+              value: "gke-build-proj-staging-models"
+            - name: MODEL_PREFIX
+              value: "models/qwen2.5-1.5b-instruct-q4-k-m/91cad51170dc346986eccefdc2dd33a9da36ead9/"
+            - name: MODEL_DIR
+              value: /models
+            - name: MODEL_FILES
+              value: "[{\"path\":\"qwen2.5-1.5b-instruct-q4_k_m.gguf\",\"sha256\":\"6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e\",\"sizeBytes\":1117320736}]"
+            - name: DOWNLOAD_TIMEOUT_SECONDS
+              value: "600"
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: fetch
+              mountPath: /opt/fetch
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: llm-cpu
+          image: "us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/ggml-org/llama.cpp@sha256:5b43086e3ba7ea5794d72904654f6cd41224a9b1c6ac0398f4940ee380d30f23"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --model
+            - "/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8080"
+            - --alias
+            - "assistant-chat"
+            - --ctx-size
+            - "8192"
+            - --parallel
+            - "2"
+            - --n-predict
+            - "384"
+            - --threads
+            - "3"
+            - --metrics
+            - --no-slots
+            - --no-webui
+          env:
+            - name: HOME
+              value: /tmp
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "3000m"
+              memory: "3072Mi"
+              ephemeral-storage: "2048Mi"
+            limits:
+              cpu: "3000m"
+              memory: "3072Mi"
+              ephemeral-storage: "4096Mi"
+          # The startup probe gives the model startup.maxSeconds to load; liveness
+          # then tolerates a busy server for a minute before restarting it.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 6
+          lifecycle:
+            preStop:
+              exec:
+                # Leave the Service endpoints first, then wait until no request
+                # is in progress: llama.cpp stops at once on SIGTERM.
+                command:
+                  - /bin/sh
+                  - -c
+                  - >-
+                    sleep 10;
+                    i=0;
+                    while [ "$i" -lt 120 ]; do
+                    n=$(curl -fsS http://127.0.0.1:8080/metrics | sed -n 's/^llamacpp:requests_processing \([0-9.]*\).*/\1/p');
+                    [ "${n%.*}" = "0" ] && exit 0;
+                    i=$((i + 2)); sleep 2;
+                    done
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: models
+          emptyDir:
+            sizeLimit: 4096Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+        - name: fetch
+          configMap:
+            name: staging-llm-cpu-fetch
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-cpu-no-provenance
+  namespace: staging-inference
+  labels:
+    app.kubernetes.io/name: "llm-cpu"
+    app.kubernetes.io/instance: "staging-llm-cpu"
+    project: "gke-build-proj"
+    environment: "staging"
+    service: "llm-cpu"
+    owner: "jd"
+    app.kubernetes.io/version: "server-b12464"
+    app.kubernetes.io/managed-by: "Helm"
+    helm.sh/chart: "model-server-0.1.0"
+spec:
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "llm-cpu"
+      app.kubernetes.io/instance: "staging-llm-cpu"
+  # A release never asks for a node or GPU beyond the pool's cap.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "llm-cpu"
+        app.kubernetes.io/instance: "staging-llm-cpu"
+        project: "gke-build-proj"
+        environment: "staging"
+        service: "llm-cpu"
+        owner: "jd"
+        app.kubernetes.io/version: "server-b12464"
+        app.kubernetes.io/managed-by: "Helm"
+        helm.sh/chart: "model-server-0.1.0"
+        model: "qwen2.5-1.5b-instruct-q4-k-m"
+      annotations:
+        checksum/fetch: 4de37d00b395176e30ca49a01da1e281527cbf8d46d746a4612e63ba6340f390
+    spec:
+      serviceAccountName: staging-llm-cpu
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 150
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        workload-class: llm-cpu
+      tolerations:
+        - key: workload-class
+          operator: Equal
+          value: llm-cpu
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: "llm-cpu"
+                  app.kubernetes.io/instance: "staging-llm-cpu"
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: fetch-model
+          image: "us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/distroless/python3-debian13@sha256:6c4cb3bfa4b555429dd19541796a6ba6b30c84675b460bd0bd5072f7d5bdae71"
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/python3.13", "/opt/fetch/fetch_model.py"]
+          env:
+            - name: MODEL_BUCKET
+              value: "gke-build-proj-staging-models"
+            - name: MODEL_PREFIX
+              value: "models/qwen2.5-1.5b-instruct-q4-k-m/91cad51170dc346986eccefdc2dd33a9da36ead9/"
+            - name: MODEL_DIR
+              value: /models
+            - name: MODEL_FILES
+              value: "[{\"path\":\"qwen2.5-1.5b-instruct-q4_k_m.gguf\",\"sha256\":\"6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e\",\"sizeBytes\":1117320736}]"
+            - name: DOWNLOAD_TIMEOUT_SECONDS
+              value: "600"
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: fetch
+              mountPath: /opt/fetch
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: llm-cpu
+          image: "us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/ggml-org/llama.cpp@sha256:5b43086e3ba7ea5794d72904654f6cd41224a9b1c6ac0398f4940ee380d30f23"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --model
+            - "/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8080"
+            - --alias
+            - "assistant-chat"
+            - --ctx-size
+            - "8192"
+            - --parallel
+            - "2"
+            - --n-predict
+            - "384"
+            - --threads
+            - "3"
+            - --metrics
+            - --no-slots
+            - --no-webui
+          env:
+            - name: HOME
+              value: /tmp
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "3000m"
+              memory: "3072Mi"
+              ephemeral-storage: "2048Mi"
+            limits:
+              cpu: "3000m"
+              memory: "3072Mi"
+              ephemeral-storage: "4096Mi"
+          # The startup probe gives the model startup.maxSeconds to load; liveness
+          # then tolerates a busy server for a minute before restarting it.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 6
+          lifecycle:
+            preStop:
+              exec:
+                # Leave the Service endpoints first, then wait until no request
+                # is in progress: llama.cpp stops at once on SIGTERM.
+                command:
+                  - /bin/sh
+                  - -c
+                  - >-
+                    sleep 10;
+                    i=0;
+                    while [ "$i" -lt 120 ]; do
+                    n=$(curl -fsS http://127.0.0.1:8080/metrics | sed -n 's/^llamacpp:requests_processing \([0-9.]*\).*/\1/p');
+                    [ "${n%.*}" = "0" ] && exit 0;
+                    i=$((i + 2)); sleep 2;
+                    done
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: models
+          emptyDir:
+            sizeLimit: 4096Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+        - name: fetch
+          configMap:
+            name: staging-llm-cpu-fetch
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-cpu-no-bounds
+  namespace: staging-inference
+  labels:
+    app.kubernetes.io/name: "llm-cpu"
+    app.kubernetes.io/instance: "staging-llm-cpu"
+    project: "gke-build-proj"
+    environment: "staging"
+    service: "llm-cpu"
+    owner: "jd"
+    app.kubernetes.io/version: "server-b12464"
+    app.kubernetes.io/managed-by: "Helm"
+    helm.sh/chart: "model-server-0.1.0"
+spec:
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "llm-cpu"
+      app.kubernetes.io/instance: "staging-llm-cpu"
+  # A release never asks for a node or GPU beyond the pool's cap.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "llm-cpu"
+        app.kubernetes.io/instance: "staging-llm-cpu"
+        project: "gke-build-proj"
+        environment: "staging"
+        service: "llm-cpu"
+        owner: "jd"
+        app.kubernetes.io/version: "server-b12464"
+        app.kubernetes.io/managed-by: "Helm"
+        helm.sh/chart: "model-server-0.1.0"
+        component: model-server
+        model: "qwen2.5-1.5b-instruct-q4-k-m"
+        model-revision: "91cad51170dc346986eccefdc2dd33a9da36ead9"
+      annotations:
+        model-sha256: "67875cf7277daeb06945badce604b2f7405a3903987b4747b488d2e554af8058"
+        checksum/fetch: 4de37d00b395176e30ca49a01da1e281527cbf8d46d746a4612e63ba6340f390
+    spec:
+      serviceAccountName: staging-llm-cpu
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 150
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        workload-class: llm-cpu
+      tolerations:
+        - key: workload-class
+          operator: Equal
+          value: llm-cpu
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: "llm-cpu"
+                  app.kubernetes.io/instance: "staging-llm-cpu"
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: fetch-model
+          image: "us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/distroless/python3-debian13@sha256:6c4cb3bfa4b555429dd19541796a6ba6b30c84675b460bd0bd5072f7d5bdae71"
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/python3.13", "/opt/fetch/fetch_model.py"]
+          env:
+            - name: MODEL_BUCKET
+              value: "gke-build-proj-staging-models"
+            - name: MODEL_PREFIX
+              value: "models/qwen2.5-1.5b-instruct-q4-k-m/91cad51170dc346986eccefdc2dd33a9da36ead9/"
+            - name: MODEL_DIR
+              value: /models
+            - name: MODEL_FILES
+              value: "[{\"path\":\"qwen2.5-1.5b-instruct-q4_k_m.gguf\",\"sha256\":\"6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e\",\"sizeBytes\":1117320736}]"
+            - name: DOWNLOAD_TIMEOUT_SECONDS
+              value: "600"
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: fetch
+              mountPath: /opt/fetch
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: llm-cpu
+          image: "us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/ggml-org/llama.cpp@sha256:5b43086e3ba7ea5794d72904654f6cd41224a9b1c6ac0398f4940ee380d30f23"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --model
+            - "/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8080"
+            - --alias
+            - "assistant-chat"
+            - --parallel
+            - "2"
+            - --n-predict
+            - "384"
+            - --threads
+            - "3"
+            - --metrics
+            - --no-slots
+            - --no-webui
+          env:
+            - name: HOME
+              value: /tmp
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "3000m"
+              memory: "3072Mi"
+              ephemeral-storage: "2048Mi"
+            limits:
+              cpu: "3000m"
+              memory: "3072Mi"
+              ephemeral-storage: "4096Mi"
+          # The startup probe gives the model startup.maxSeconds to load; liveness
+          # then tolerates a busy server for a minute before restarting it.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 6
+          lifecycle:
+            preStop:
+              exec:
+                # Leave the Service endpoints first, then wait until no request
+                # is in progress: llama.cpp stops at once on SIGTERM.
+                command:
+                  - /bin/sh
+                  - -c
+                  - >-
+                    sleep 10;
+                    i=0;
+                    while [ "$i" -lt 120 ]; do
+                    n=$(curl -fsS http://127.0.0.1:8080/metrics | sed -n 's/^llamacpp:requests_processing \([0-9.]*\).*/\1/p');
+                    [ "${n%.*}" = "0" ] && exit 0;
+                    i=$((i + 2)); sleep 2;
+                    done
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: models
+          emptyDir:
+            sizeLimit: 4096Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+        - name: fetch
+          configMap:
+            name: staging-llm-cpu-fetch

@@ -1,0 +1,7 @@
+# Staging overrides, layered after values.yaml.
+environment: staging
+
+image:
+  repository: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/huggingface/text-embeddings-inference
+  digest: "sha256:2538ea1c9640d3763b15af668039d24172d063b42337b0c27796fc2be180c78d"
+releaseVersion: "cpu-1.9.4"

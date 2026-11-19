@@ -54,6 +54,7 @@ The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a runn
 | --- | --- |
 | [`apps/platform-verification-api/`](apps/platform-verification-api/) | FastAPI service I use to verify deployment, health, configuration, logging, and metrics. See its [README](apps/platform-verification-api/README.md) |
 | [`platform/charts/service/`](platform/charts/service/) | Shared Helm chart that deploys one HTTP service |
+| [`platform/charts/model-server/`](platform/charts/model-server/) | Helm chart that deploys one model server, with a verified model download and inference limits |
 | [`platform/services/platform-verification-api/`](platform/services/platform-verification-api/) | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml` |
 | [`platform/namespaces/`](platform/namespaces/) | Local namespace manifest that enforces the Pod Security "restricted" profile |
 | [`platform/tests/`](platform/tests/) | Chart validation and live-check scripts, and the admission policy fixtures |
@@ -61,6 +62,8 @@ The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a runn
 | [`platform/kyverno/`](platform/kyverno/) | Kyverno install overlay, with images from the mirror repository |
 | [`platform/cluster/`](platform/cluster/) | What Argo CD manages from Git: the `staging` and `staging-inference` namespaces and their guardrails, the Gateway, the admission policies, the projects, and the Applications |
 | [`platform/mirror/`](platform/mirror/) | Third-party inference images pinned by digest, and the script that mirrors and scans them |
+| [`platform/profiles/`](platform/profiles/) | Session profiles; each selects which model server runs |
+| [`platform/custom-metrics/`](platform/custom-metrics/) | Custom Metrics Stackdriver Adapter overlay, which lets the HPA scale model servers on queue metrics |
 | [`models/`](models/) | Model manifests with pinned revisions and file hashes, their schema, and the upload script |
 | [`platform/evidence/`](platform/evidence/) | Reports from lab sessions; see the [index](platform/evidence/README.md) |
 | [`infra/`](infra/) | GCP bootstrap, Terraform root and modules, and Terraform validation |
@@ -84,7 +87,7 @@ The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a runn
 | Observability: metrics and email alerts | Done |
 | Acceptance tests: load, autoscaling, Pod failure, node drain | Done; a node upgrade rehearsal is still open |
 | Cost report | Planned |
-| AI inference, CPU stage: inference namespace, node pool, models bucket, and model manifests | In progress |
+| AI inference, CPU stage: inference namespace, node pool, models bucket, model manifests, model-server chart, and inference policies | In progress |
 
 What works today:
 

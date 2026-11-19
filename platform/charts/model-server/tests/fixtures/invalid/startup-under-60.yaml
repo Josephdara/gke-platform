@@ -1,0 +1,3 @@
+# expect: /startup/maxSeconds'
+startup:
+  maxSeconds: 30

@@ -1,0 +1,21 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: {{ include "model-server.fullname" . }}
+  namespace: {{ include "model-server.namespace" . }}
+  labels:
+    {{- include "model-server.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "model-server.selectorLabels" . | nindent 6 }}
+  endpoints:
+    # Both llama.cpp and TEI serve /metrics on their main port.
+    - port: http
+      interval: 15s
+  targetLabels:
+    fromPod:
+      - from: app.kubernetes.io/version
+        to: version
+      - from: model
+        to: model

@@ -1,0 +1,27 @@
+# Syncs the active session profile directory. Its path selects which model
+# server runs; it prunes, so a model Application removed from the profile is
+# deleted with its Deployment, HPA, and Pods.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: staging-profile
+  namespace: argocd
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Josephdara/gke-platform.git
+    targetRevision: main
+    path: platform/profiles/cpu
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
