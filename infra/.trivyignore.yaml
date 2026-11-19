@@ -24,3 +24,8 @@ misconfigurations:
       - "modules/pipeline/main.tf"
     statement: "Access logging needs a second bucket and adds cost; only the publish build writes evidence and only the owner reads it. Revisit in the observability build."
     expired_at: 2027-01-01
+  - id: GCP-0077
+    paths:
+      - "modules/foundation/main.tf"
+    statement: "Access logging needs a second bucket and adds cost; the models bucket holds only public model files, the owner uploads them, and model-server KSAs can only read them."
+    expired_at: 2027-01-01

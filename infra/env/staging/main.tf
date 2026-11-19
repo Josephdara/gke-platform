@@ -45,10 +45,40 @@ module "secrets" {
 
   project_id  = var.project_id
   environment = var.environment
-  service_secrets = {
-    platform-verification-api = ["demo"]
+  secret_readers = {
+    platform-verification-api-demo = [
+      { namespace = var.environment, service = "platform-verification-api" }
+    ]
   }
   ungranted_secrets = ["forbidden-demo"]
+}
+
+locals {
+  storage_readers = {
+    models = [
+      { namespace = "${var.environment}-inference", service = "llm-cpu" },
+      { namespace = "${var.environment}-inference", service = "embeddings" }
+    ]
+  }
+  storage_grants = merge([
+    for bucket, readers in local.storage_readers : {
+      for r in readers : "${bucket}/${r.namespace}/${r.service}" => {
+        bucket = bucket
+        member = "principal://iam.googleapis.com/${module.secrets.workload_pool}/subject/ns/${r.namespace}/sa/${var.environment}-${r.service}"
+      }
+    }
+  ]...)
+  buckets = {
+    models = module.foundation.models_bucket_name
+  }
+}
+
+resource "google_storage_bucket_iam_member" "workload_read" {
+  for_each = local.storage_grants
+
+  bucket = local.buckets[each.value.bucket]
+  role   = "roles/storage.objectViewer"
+  member = each.value.member
 }
 
 module "pipeline" {
@@ -82,6 +112,7 @@ module "edge" {
   project_id  = var.project_id
   environment = var.environment
   dns_name    = "gke.josephdara.com"
+  hosts       = ["api", "assistant"]
   lab_enabled = var.lab_enabled
 
   depends_on = [module.foundation]

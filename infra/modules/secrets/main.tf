@@ -3,16 +3,22 @@ data "google_project" "this" {
 }
 
 locals {
-  owned = merge([
-    for service, names in var.service_secrets : {
-      for name in names : "${var.environment}-${service}-${name}" => service
+  secrets = {
+    for name, readers in var.secret_readers : "${var.environment}-${name}" => readers[0].service
+  }
+  grants = merge([
+    for name, readers in var.secret_readers : {
+      for r in readers : "${var.environment}-${name}/${r.namespace}/${r.service}" => {
+        secret_id = "${var.environment}-${name}"
+        member    = "principal://iam.googleapis.com/${local.workload_pool}/subject/ns/${r.namespace}/sa/${var.environment}-${r.service}"
+      }
     }
   ]...)
   workload_pool = "projects/${data.google_project.this.number}/locations/global/workloadIdentityPools/${var.project_id}.svc.id.goog"
 }
 
 resource "google_secret_manager_secret" "this" {
-  for_each = merge(local.owned, { for name in var.ungranted_secrets : "${var.environment}-${name}" => null })
+  for_each = merge(local.secrets, { for name in var.ungranted_secrets : "${var.environment}-${name}" => null })
 
   project         = var.project_id
   secret_id       = each.key
@@ -25,12 +31,17 @@ resource "google_secret_manager_secret" "this" {
 }
 
 resource "google_secret_manager_secret_iam_member" "accessor" {
-  for_each = local.owned
+  for_each = local.grants
 
   project   = var.project_id
-  secret_id = google_secret_manager_secret.this[each.key].secret_id
+  secret_id = google_secret_manager_secret.this[each.value.secret_id].secret_id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "principal://iam.googleapis.com/${local.workload_pool}/subject/ns/${var.environment}/sa/${var.environment}-${each.value}"
+  member    = each.value.member
+}
+
+moved {
+  from = google_secret_manager_secret_iam_member.accessor["staging-platform-verification-api-demo"]
+  to   = google_secret_manager_secret_iam_member.accessor["staging-platform-verification-api-demo/staging/platform-verification-api"]
 }
 
 resource "google_project_iam_audit_config" "secret_manager" {

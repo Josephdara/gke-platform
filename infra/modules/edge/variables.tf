@@ -17,3 +17,8 @@ variable "lab_enabled" {
   type        = bool
   description = "Create the Gateway's static IP and the API's A record."
 }
+
+variable "hosts" {
+  type        = list(string)
+  description = "Host labels under <environment>.<dns_name>. Each gets its own DNS authorization, managed certificate, and certificate map entry."
+}
