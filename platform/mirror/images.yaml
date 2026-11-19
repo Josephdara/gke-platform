@@ -1,0 +1,62 @@
+# Third-party images that inference workloads run, copied unchanged into the
+# staging-mirror repository by mirror.sh. Copying keeps each digest, so
+# manifests reference the mirror path with the same digest.
+#
+# Each entry: source (upstream image and tag), digest (the pinned index digest),
+# target (path and tag in the mirror), purpose, and the scan decision for that
+# digest: scanned (date), report (path in the evidence bucket), fixable
+# (findings with a fix available), decision (accepted or replace), reason, and
+# reviewBy (after this date, mirror.sh --check fails until the decision is redone).
+# A material finding is a critical or high one with a fix available. Changing
+# the digest means mirroring, scanning, and deciding again.
+images:
+  - source: ghcr.io/ggml-org/llama.cpp:server-b12464
+    digest: sha256:5b43086e3ba7ea5794d72904654f6cd41224a9b1c6ac0398f4940ee380d30f23
+    target: ggml-org/llama.cpp:server-b12464
+    purpose: llama.cpp server, CPU build, serving the chat model as llm-cpu
+    scanned: 2026-11-18
+    report: inference/mirror/2026-11-18/ggml-org_llama.cpp_server-b12464.json
+    fixable: 0 critical, 0 high, 20 medium
+    decision: accepted
+    reason: No material findings; the medium findings are in the Ubuntu base image.
+    reviewBy: 2026-12-31
+  - source: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4
+    digest: sha256:2538ea1c9640d3763b15af668039d24172d063b42337b0c27796fc2be180c78d
+    target: huggingface/text-embeddings-inference:cpu-1.9.4
+    purpose: Text Embeddings Inference, CPU build, serving bge-small-en-v1.5 as embeddings
+    scanned: 2026-11-18
+    report: inference/mirror/2026-11-18/huggingface_text-embeddings-inference_cpu-1.9.4.json
+    fixable: 4 critical, 13 high, 29 medium
+    decision: accepted
+    reason: Newest CPU release; the findings are in Debian base packages such as OpenSSL. The service is internal-only, has no route, and can only read the models bucket.
+    reviewBy: 2026-12-31
+  - source: docker.io/pgvector/pgvector:0.8.7-pg17
+    digest: sha256:b513c48566e4777cd3370451400000c78eda6a08131d68f4c31d4a76f27bd8fd
+    target: pgvector/pgvector:0.8.7-pg17
+    purpose: PostgreSQL 17 with pgvector, the RAG vector database
+    scanned: 2026-11-18
+    report: inference/mirror/2026-11-18/pgvector_pgvector_0.8.7-pg17.json
+    fixable: 1 critical, 25 high, 32 medium
+    decision: accepted
+    reason: The critical finding is in the Go standard library of a helper binary. The database has no route and accepts connections only from rag-api and ingest.
+    reviewBy: 2026-12-31
+  - source: gcr.io/google.com/cloudsdktool/cloud-sdk:587.0.0-slim
+    digest: sha256:7c2dbc4eeba1e500b788be19cae33599cefe3294949a62c034bd1c2002329f69
+    target: google.com/cloudsdktool/cloud-sdk:587.0.0-slim
+    purpose: Cloud SDK for the model-server init container that copies and verifies model files
+    scanned: 2026-11-18
+    report: inference/mirror/2026-11-18/google.com_cloudsdktool_cloud-sdk_587.0.0-slim.json
+    fixable: 5 critical, 132 high, 1080 medium
+    decision: replace
+    reason: Too many material findings for a job that only copies and checks files. The model-server chart's init container is to use a smaller image; no workload uses this one.
+    reviewBy: 2026-11-25
+  - source: gcr.io/gke-release/custom-metrics-stackdriver-adapter:v0.16.12-gke.4
+    digest: sha256:6773160c63486991f0332b7d3beb0eb45d767755b617592cb22866d09d34bd9d
+    target: gke-release/custom-metrics-stackdriver-adapter:v0.16.12-gke.4
+    purpose: Custom Metrics Stackdriver Adapter, exposing Managed Prometheus series to the HPA
+    scanned: 2026-11-18
+    report: inference/mirror/2026-11-18/gke-release_custom-metrics-stackdriver-adapter_v0.16.12-gke.4.json
+    fixable: 0 critical, 1 high, 4 medium
+    decision: accepted
+    reason: The high finding is in golang.org/x/net. The adapter is internal-only and can only read monitoring data; move to a newer -gke tag when one is published.
+    reviewBy: 2026-12-31

@@ -1,0 +1,15 @@
+# Chat model for llm-cpu. Hashes are the ones Hugging Face publishes for this revision.
+name: qwen2.5-1.5b-instruct-q4-k-m
+sourceRepository: Qwen/Qwen2.5-1.5B-Instruct-GGUF
+sourceRevision: 91cad51170dc346986eccefdc2dd33a9da36ead9
+license: apache-2.0
+format: gguf
+quantization: Q4_K_M
+bucketPath: models/qwen2.5-1.5b-instruct-q4-k-m/91cad51170dc346986eccefdc2dd33a9da36ead9/
+tokenizer: embedded in the GGUF file
+chatTemplate: embedded in the GGUF file
+contextLength: 4096
+files:
+  - path: qwen2.5-1.5b-instruct-q4_k_m.gguf
+    sizeBytes: 1117320736
+    sha256: 6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e
