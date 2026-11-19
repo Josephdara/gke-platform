@@ -6,12 +6,17 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-4"
 spec:
-  description: Platform controllers installed by Argo CD, currently Kyverno
+  description: Platform controllers installed by Argo CD, currently Kyverno and the Custom Metrics Stackdriver Adapter
   sourceRepos:
     - https://github.com/Josephdara/gke-platform.git
   destinations:
     - server: https://kubernetes.default.svc
       namespace: kyverno
+    - server: https://kubernetes.default.svc
+      namespace: custom-metrics
+    # The adapter reads the API server's authentication settings through a RoleBinding here.
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
@@ -21,6 +26,8 @@ spec:
       kind: ClusterRole
     - group: rbac.authorization.k8s.io
       kind: ClusterRoleBinding
+    - group: apiregistration.k8s.io
+      kind: APIService
   namespaceResourceWhitelist:
     - group: "*"
       kind: "*"

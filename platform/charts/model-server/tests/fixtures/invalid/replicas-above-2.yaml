@@ -1,0 +1,3 @@
+# expect: /autoscaling/max'
+autoscaling:
+  max: 3

@@ -73,6 +73,13 @@ locals {
   }
 }
 
+# The Custom Metrics Stackdriver Adapter reads Managed Prometheus series for the HPA.
+resource "google_project_iam_member" "metrics_adapter_viewer" {
+  project = var.project_id
+  role    = "roles/monitoring.viewer"
+  member  = "principal://iam.googleapis.com/${module.secrets.workload_pool}/subject/ns/custom-metrics/sa/custom-metrics-stackdriver-adapter"
+}
+
 resource "google_storage_bucket_iam_member" "workload_read" {
   for_each = local.storage_grants
 

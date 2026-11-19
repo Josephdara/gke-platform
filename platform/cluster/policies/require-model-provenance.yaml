@@ -1,0 +1,32 @@
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-model-provenance
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  autogen:
+    podControllers:
+      controllers: [deployments, statefulsets, daemonsets, jobs, cronjobs]
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [staging, staging-inference]
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: serving
+      expression: "(object.spec.containers + object.spec.?initContainers.orValue([])).exists(c, c.image.matches('^us-east4-docker[.]pkg[.]dev/gke-build-proj/staging-mirror/(ggml-org/llama[.]cpp|huggingface/text-embeddings-inference)[@:]'))"
+    - name: labels
+      expression: "object.metadata.?labels.orValue({})"
+  validations:
+    - expression: "!variables.serving || (variables.labels[?'component'].orValue('') == 'model-server' && variables.labels[?'model'].orValue('') != '' && variables.labels[?'model-revision'].orValue('').matches('^[0-9a-f]{40}$') && object.metadata.?annotations.orValue({})[?'model-sha256'].orValue('').matches('^[0-9a-f]{64}$'))"
+      message: "A Pod that runs a model-serving image must carry the labels component=model-server, model, and model-revision (a 40-character commit), and the annotation model-sha256 (64 hex characters). Deploy it with the model-server chart."

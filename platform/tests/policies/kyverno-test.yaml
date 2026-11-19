@@ -10,6 +10,8 @@ policies:
   - ../../cluster/policies/require-service-account.yaml
   - ../../cluster/policies/restrict-pod-security.yaml
   - ../../cluster/policies/require-read-only-root-filesystem.yaml
+  - ../../cluster/policies/require-model-provenance.yaml
+  - ../../cluster/policies/require-inference-bounds.yaml
 resources:
   - deployments.yaml
 variables: values.yaml
@@ -126,6 +128,61 @@ results:
     isValidatingPolicy: true
   - policy: require-read-only-root-filesystem
     resources: [inference-breaks-all]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-approved-registry
+    resources: [staging-llm-cpu]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-image-digest
+    resources: [staging-llm-cpu]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-resources
+    resources: [staging-llm-cpu]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-labels
+    resources: [staging-llm-cpu]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-service-account
+    resources: [staging-llm-cpu]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: restrict-pod-security
+    resources: [staging-llm-cpu]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-read-only-root-filesystem
+    resources: [staging-llm-cpu]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-model-provenance
+    resources: [staging-llm-cpu]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-inference-bounds
+    resources: [staging-llm-cpu]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-model-provenance
+    resources: [llm-cpu-no-provenance]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-inference-bounds
+    resources: [llm-cpu-no-bounds]
     kind: Deployment
     result: fail
     isValidatingPolicy: true

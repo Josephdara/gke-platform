@@ -1,0 +1,192 @@
+{{- include "model-server.validate" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "model-server.fullname" . }}
+  namespace: {{ include "model-server.namespace" . }}
+  labels:
+    {{- include "model-server.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "model-server.selectorLabels" . | nindent 6 }}
+  # A release never asks for a node or GPU beyond the pool's cap.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        {{- include "model-server.labels" . | nindent 8 }}
+        {{- include "model-server.modelLabels" . | nindent 8 }}
+      annotations:
+        model-sha256: {{ include "model-server.modelFingerprint" . | quote }}
+        checksum/fetch: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "model-server.fullname" . }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 150
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if eq .Values.pool "cpu" }}
+      nodeSelector:
+        workload-class: llm-cpu
+      tolerations:
+        - key: workload-class
+          operator: Equal
+          value: llm-cpu
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "model-server.selectorLabels" . | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+      initContainers:
+        - name: fetch-model
+          image: {{ printf "%s@%s" .Values.fetcher.image.repository .Values.fetcher.image.digest | quote }}
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/python3.13", "/opt/fetch/fetch_model.py"]
+          env:
+            - name: MODEL_BUCKET
+              value: {{ .Values.model.bucket | quote }}
+            - name: MODEL_PREFIX
+              value: {{ .Values.model.bucketPath | quote }}
+            - name: MODEL_DIR
+              value: /models
+            - name: MODEL_FILES
+              value: {{ .Values.model.files | toJson | quote }}
+            - name: DOWNLOAD_TIMEOUT_SECONDS
+              value: {{ .Values.startup.downloadTimeoutSeconds | quote }}
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: fetch
+              mountPath: /opt/fetch
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: {{ .Values.serviceName }}
+          image: {{ printf "%s@%s" .Values.image.repository .Values.image.digest | quote }}
+          imagePullPolicy: IfNotPresent
+          args:
+            {{- include "model-server.args" . | nindent 12 }}
+          env:
+            - name: HOME
+              value: /tmp
+            {{- if eq .Values.runtime "tei" }}
+            - name: HUGGINGFACE_HUB_CACHE
+              value: /tmp/hf
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: RAYON_NUM_THREADS
+              value: {{ .Values.server.threads | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.port }}
+              protocol: TCP
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu | quote }}
+              memory: {{ .Values.resources.requests.memory | quote }}
+              ephemeral-storage: {{ .Values.resources.requests.ephemeralStorage | quote }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu | quote }}
+              memory: {{ .Values.resources.limits.memory | quote }}
+              ephemeral-storage: {{ .Values.resources.limits.ephemeralStorage | quote }}
+          # The startup probe gives the model startup.maxSeconds to load; liveness
+          # then tolerates a busy server for a minute before restarting it.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: {{ div .Values.startup.maxSeconds 10 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 6
+          lifecycle:
+            preStop:
+              exec:
+                {{- if eq .Values.runtime "llamacpp" }}
+                # Leave the Service endpoints first, then wait until no request
+                # is in progress: llama.cpp stops at once on SIGTERM.
+                command:
+                  - /bin/sh
+                  - -c
+                  - >-
+                    sleep 10;
+                    i=0;
+                    while [ "$i" -lt 120 ]; do
+                    n=$(curl -fsS http://127.0.0.1:{{ .Values.server.port }}/metrics | sed -n 's/^llamacpp:requests_processing \([0-9.]*\).*/\1/p');
+                    [ "${n%.*}" = "0" ] && exit 0;
+                    i=$((i + 2)); sleep 2;
+                    done
+                {{- else }}
+                command: ["sleep", "10"]
+                {{- end }}
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: models
+          emptyDir:
+            sizeLimit: {{ .Values.resources.limits.ephemeralStorage }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+        - name: fetch
+          configMap:
+            name: {{ include "model-server.fullname" . }}-fetch

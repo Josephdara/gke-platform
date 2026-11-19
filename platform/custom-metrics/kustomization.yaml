@@ -1,0 +1,14 @@
+# Custom Metrics Stackdriver Adapter: exposes Managed Prometheus series to the
+# HPA as Pods metrics. The upstream manifest is pinned to the commit of its
+# v0.16.12 release; the image comes from the mirror repository by digest.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - https://raw.githubusercontent.com/GoogleCloudPlatform/k8s-stackdriver/8df08ef6debe7681c329f31ad256beef59d421ad/custom-metrics-stackdriver-adapter/deploy/production/adapter_new_resource_model.yaml
+
+images:
+  - name: gcr.io/gke-release/custom-metrics-stackdriver-adapter
+    newName: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/gke-release/custom-metrics-stackdriver-adapter
+    newTag: v0.16.12-gke.4
+    digest: sha256:6773160c63486991f0332b7d3beb0eb45d767755b617592cb22866d09d34bd9d

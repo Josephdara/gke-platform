@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Model-server chart values",
+  "description": "Interface for deploying one model server. Security, rollout, shutdown, and download behavior are fixed by the chart.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project", "environment", "serviceName", "owner", "releaseVersion", "runtime", "image", "server", "fetcher", "model", "limits", "resources", "pool", "startup", "replicas", "autoscaling", "callers"],
+  "properties": {
+    "project": { "description": "GCP project ID, used in the project label.", "$ref": "#/$defs/dnsLabel" },
+    "environment": { "description": "Environment. The namespace is <environment>-inference.", "enum": ["staging"] },
+    "serviceName": { "description": "Service name. Resources and the KSA are <environment>-<serviceName>.", "$ref": "#/$defs/dnsLabel" },
+    "owner": { "description": "Owning person or team, as a label value.", "$ref": "#/$defs/labelValue" },
+    "releaseVersion": { "description": "Release identifier, as quoted text. Becomes the version label.", "$ref": "#/$defs/labelValue" },
+    "runtime": { "description": "Serving engine. Sets the server arguments, probes, metrics port, and preStop hook.", "enum": ["llamacpp", "tei"] },
+    "image": { "$ref": "#/$defs/image" },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port", "threads"],
+      "properties": {
+        "port": { "description": "Port the server listens on. Ports below 1024 need privileges the chart removes.", "type": "integer", "minimum": 1024, "maximum": 65535 },
+        "threads": { "description": "CPU threads for inference. Match the CPU request.", "type": "integer", "minimum": 1, "maximum": 16 }
+      }
+    },
+    "fetcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image"],
+      "properties": { "image": { "$ref": "#/$defs/image" } }
+    },
+    "model": {
+      "description": "Copied from models/<name>.yaml; validate-chart.sh checks that they match.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "revision", "bucket", "bucketPath", "servedName", "files"],
+      "properties": {
+        "name": { "$ref": "#/$defs/labelValue" },
+        "revision": { "description": "Source repository commit.", "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "bucket": { "description": "Cloud Storage bucket that holds the files.", "type": "string", "pattern": "^[a-z0-9][-a-z0-9_.]{1,61}[a-z0-9]$" },
+        "bucketPath": { "description": "Object prefix, models/<name>/<revision>/.", "type": "string", "pattern": "^models/[a-z0-9.-]+/[0-9a-f]{40}/$" },
+        "servedName": { "description": "Model name clients send in requests.", "$ref": "#/$defs/labelValue" },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sizeBytes", "sha256"],
+            "properties": {
+              "path": { "type": "string", "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./-]*$" },
+              "sizeBytes": { "type": "integer", "minimum": 1 },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      }
+    },
+    "limits": {
+      "description": "Inference bounds the chart turns into server arguments.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contextTokens", "concurrentSequences", "maxOutputTokens"],
+      "properties": {
+        "contextTokens": { "description": "Total context across all slots (llama.cpp --ctx-size).", "type": "integer", "minimum": 256, "maximum": 131072 },
+        "concurrentSequences": { "description": "Requests processed at once (llama.cpp --parallel, TEI --max-concurrent-requests).", "type": "integer", "minimum": 1, "maximum": 64 },
+        "maxOutputTokens": { "description": "Tokens generated per request (llama.cpp --n-predict).", "type": "integer", "minimum": 1, "maximum": 8192 }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests", "limits"],
+      "properties": {
+        "requests": { "$ref": "#/$defs/computeResources" },
+        "limits": { "$ref": "#/$defs/computeResources" }
+      }
+    },
+    "pool": { "description": "Node pool. cpu selects and tolerates the inference CPU pool and spreads replicas across nodes.", "enum": ["cpu", "general"] },
+    "startup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxSeconds", "downloadTimeoutSeconds"],
+      "properties": {
+        "maxSeconds": { "description": "Time the server has to load the model before the startup probe fails.", "type": "integer", "minimum": 60, "maximum": 1800 },
+        "downloadTimeoutSeconds": { "description": "Time the init container has to download the files.", "type": "integer", "minimum": 30, "maximum": 1800 }
+      }
+    },
+    "replicas": { "description": "Fixed replica count when autoscaling is off.", "type": "integer", "minimum": 1, "maximum": 2 },
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "min", "max", "metrics", "scaleUpStabilizationSeconds", "scaleDownStabilizationSeconds"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "min": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "max": { "description": "At most 2, the inference pool's node cap.", "type": "integer", "minimum": 1, "maximum": 2 },
+        "metrics": {
+          "description": "Pods metrics from the custom metrics adapter, compared as per-Pod averages.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "targetAverageValue"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^prometheus\\.googleapis\\.com\\|[a-zA-Z_:][a-zA-Z0-9_:]*\\|(gauge|counter)$" },
+              "targetAverageValue": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$" }
+            }
+          }
+        },
+        "scaleUpStabilizationSeconds": { "type": "integer", "minimum": 0, "maximum": 3600 },
+        "scaleDownStabilizationSeconds": { "type": "integer", "minimum": 0, "maximum": 3600 }
+      }
+    },
+    "callers": {
+      "description": "Pods that may reach the server port, by namespace and service label.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["namespace", "service"],
+        "properties": {
+          "namespace": { "$ref": "#/$defs/dnsLabel" },
+          "service": { "$ref": "#/$defs/dnsLabel" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dnsLabel": { "type": "string", "maxLength": 63, "pattern": "^[a-z]([-a-z0-9]*[a-z0-9])?$" },
+    "labelValue": { "type": "string", "maxLength": 63, "pattern": "^[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$" },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "digest"],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?(:[0-9]+)?(/[a-z0-9]([-a-z0-9._]*[a-z0-9])?)+$" },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    },
+    "computeResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "memory", "ephemeralStorage"],
+      "properties": {
+        "cpu": { "description": "Millicores, such as 3000m.", "type": "string", "pattern": "^[1-9][0-9]*m$" },
+        "memory": { "description": "Mebibytes, such as 3072Mi.", "type": "string", "pattern": "^[1-9][0-9]*Mi$" },
+        "ephemeralStorage": { "description": "Mebibytes. The limit also sizes the model volume.", "type": "string", "pattern": "^[1-9][0-9]*Mi$" }
+      }
+    }
+  }
+}

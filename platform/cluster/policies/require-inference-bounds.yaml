@@ -1,0 +1,30 @@
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-inference-bounds
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  autogen:
+    podControllers:
+      controllers: [deployments, statefulsets, daemonsets, jobs, cronjobs]
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [staging, staging-inference]
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: llamacpp
+      expression: "(object.spec.containers + object.spec.?initContainers.orValue([])).filter(c, c.image.matches('^us-east4-docker[.]pkg[.]dev/gke-build-proj/staging-mirror/ggml-org/llama[.]cpp[@:]'))"
+  validations:
+    - expression: "variables.llamacpp.all(c, ['--ctx-size', '--parallel', '--n-predict'].all(f, f in c.?args.orValue([]) || f in c.?command.orValue([])))"
+      message: "A llama.cpp container must pass --ctx-size, --parallel, and --n-predict, so every model server has context and concurrency limits and a default output limit. Set limits in the model-server chart's values."

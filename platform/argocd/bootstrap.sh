@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Installs Argo CD and the root Application on the staging cluster, then waits
-# until every Application is Synced and Healthy. Safe to rerun.
+# Installs Argo CD and the root Applications on the staging cluster, then waits
+# until the platform and the API are Synced and Healthy. It reports the session
+# profile's state without waiting for it, because a model server's cold start
+# can outlast the timeout. Safe to rerun.
 # Usage: platform/argocd/bootstrap.sh
 # Exit codes: 0 done, 1 a step failed or timed out, 2 setup problem.
 set -euo pipefail
@@ -9,6 +11,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 CONTEXT=${CONTEXT:-gke_gke-build-proj_us-east4-a_staging-super-cluster}
 APPS="staging-platform staging-platform-verification-api"
+PROFILE_APP=staging-profile
 VALUES=platform/services/platform-verification-api/values-staging.yaml
 TIMEOUT=${TIMEOUT:-600}
 
@@ -31,20 +34,22 @@ for d in argocd-repo-server argocd-redis argocd-applicationset-controller; do
   k -n argocd rollout status "deployment/$d" --timeout=300s
 done
 
-echo "== Applying the root Application"
+echo "== Applying the root Applications"
 k apply --server-side --force-conflicts -f platform/argocd/root/
 
 echo "== Waiting up to ${TIMEOUT}s for Applications to be Synced and Healthy"
 deadline=$(( $(date +%s) + TIMEOUT ))
 while :; do
   ready=0
+  total=0
   for app in $APPS; do
+    total=$((total + 1))
     state=$(k -n argocd get applications.argoproj.io "$app" \
       -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)
     printf '  %-36s %s\n' "$app" "${state:-not created yet}"
     if [ "$state" = "Synced/Healthy" ]; then ready=$((ready + 1)); fi
   done
-  if [ "$ready" -eq 2 ]; then break; fi
+  if [ "$ready" -eq "$total" ]; then break; fi
   if [ "$(date +%s)" -ge "$deadline" ]; then
     echo "Timed out. Inspect with: kubectl --context $CONTEXT -n argocd get applications" >&2
     exit 1
@@ -69,6 +74,9 @@ echo "  Bundled Helm:     $helm_version"
 echo "  Synced revision:  $revision"
 echo "  Expected digest:  ${expected:-unknown}"
 echo "  Running digests:  $(echo "$running" | tr '\n' ' ')"
+profile_state=$(k -n argocd get applications.argoproj.io "$PROFILE_APP" \
+  -o jsonpath='{.spec.source.path} {.status.sync.status}/{.status.health.status}' 2>/dev/null || true)
+echo "  Session profile:  ${profile_state:-$PROFILE_APP not created yet} (not waited for)"
 
 if [ -n "$expected" ] && [ "$running" = "$expected" ]; then
   echo "PASS  running image matches Git"

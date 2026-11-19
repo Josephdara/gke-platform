@@ -1,0 +1,21 @@
+# Platform defaults. Each service sets the rest in its own values files.
+server:
+  port: 8080
+
+# The init container that downloads and verifies the model files.
+fetcher:
+  image:
+    repository: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/distroless/python3-debian13
+    digest: "sha256:6c4cb3bfa4b555429dd19541796a6ba6b30c84675b460bd0bd5072f7d5bdae71"
+
+replicas: 1
+
+autoscaling:
+  enabled: false
+  min: 1
+  max: 2
+  metrics: []
+  scaleUpStabilizationSeconds: 0
+  scaleDownStabilizationSeconds: 300
+
+callers: []

@@ -1,0 +1,63 @@
+# Shared values for the CPU chat model server. Render with values-staging.yaml.
+project: gke-build-proj
+serviceName: llm-cpu
+owner: jd
+
+runtime: llamacpp
+pool: cpu
+
+server:
+  threads: 3
+
+# Copied from models/qwen2.5-1.5b-instruct-q4-k-m.yaml; validate-chart.sh checks they match.
+model:
+  name: qwen2.5-1.5b-instruct-q4-k-m
+  revision: 91cad51170dc346986eccefdc2dd33a9da36ead9
+  bucket: gke-build-proj-staging-models
+  bucketPath: models/qwen2.5-1.5b-instruct-q4-k-m/91cad51170dc346986eccefdc2dd33a9da36ead9/
+  servedName: assistant-chat
+  files:
+    - path: qwen2.5-1.5b-instruct-q4_k_m.gguf
+      sizeBytes: 1117320736
+      sha256: 6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e
+
+# Two slots of 4,096 tokens, 384 output tokens per answer.
+limits:
+  contextTokens: 8192
+  concurrentSequences: 2
+  maxOutputTokens: 384
+
+resources:
+  requests:
+    cpu: 3000m
+    memory: 3072Mi
+    ephemeralStorage: 2048Mi
+  limits:
+    cpu: 3000m
+    memory: 3072Mi
+    ephemeralStorage: 4096Mi
+
+startup:
+  maxSeconds: 600
+  downloadTimeoutSeconds: 600
+
+# Scales on queued requests per Pod, and holds two replicas while both have busy slots.
+autoscaling:
+  enabled: true
+  min: 1
+  max: 2
+  metrics:
+    - name: "prometheus.googleapis.com|llamacpp:requests_deferred|gauge"
+      targetAverageValue: "1"
+    - name: "prometheus.googleapis.com|llamacpp:requests_processing|gauge"
+      targetAverageValue: "1.5"
+  scaleUpStabilizationSeconds: 0
+  scaleDownStabilizationSeconds: 300
+
+callers:
+  - namespace: staging
+    service: rag-api
+  - namespace: staging
+    service: loadgen
+  - namespace: staging
+    service: debug

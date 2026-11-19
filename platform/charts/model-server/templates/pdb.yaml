@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "model-server.fullname" . }}
+  namespace: {{ include "model-server.namespace" . }}
+  labels:
+    {{- include "model-server.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "model-server.selectorLabels" . | nindent 6 }}

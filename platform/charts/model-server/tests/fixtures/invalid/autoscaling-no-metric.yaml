@@ -1,0 +1,3 @@
+# expect: autoscaling.metrics is empty
+autoscaling:
+  metrics: []
