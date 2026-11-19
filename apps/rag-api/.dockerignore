@@ -1,0 +1,5 @@
+**
+!requirements.txt
+!src/
+!src/rag_api/
+!src/rag_api/*.py
