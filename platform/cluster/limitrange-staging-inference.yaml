@@ -10,6 +10,7 @@ spec:
     - type: Container
       # Without explicit ephemeral-storage defaults, Kubernetes copies the
       # maximum into every container that sets none, such as an init container.
+      # The maximum stays below the 18.8 GB an inference node can allocate.
       defaultRequest:
         cpu: 100m
         memory: 128Mi
@@ -21,4 +22,4 @@ spec:
       max:
         cpu: "4"
         memory: 16Gi
-        ephemeral-storage: 40Gi
+        ephemeral-storage: 16Gi

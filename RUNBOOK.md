@@ -375,6 +375,13 @@ terraform -chdir=infra/env/staging plan -var=lab_enabled=true -out=../../private
 terraform -chdir=infra/env/staging show ../../private/lab-on.tfplan
 ```
 
+For an inference session, plan with the inference flag instead. Expect 15 resources to add: the same 11, plus `staging-infer-cpu-pool` and the private `staging-googleapis` zone with its two records:
+
+```bash
+terraform -chdir=infra/env/staging plan -var=lab_enabled=true -var=inference_cpu_enabled=true -out=../../private/lab-on.tfplan
+terraform -chdir=infra/env/staging show ../../private/lab-on.tfplan
+```
+
 Review the plan, then apply it. The apply takes about 10 minutes:
 
 ```bash
@@ -421,14 +428,21 @@ kubectl --context "$CONTEXT" -n argocd patch applications.argoproj.io $ENVIRONME
 kubectl --context "$CONTEXT" -n argocd patch applications.argoproj.io $APP --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
 ```
 
-**2. Delete the HTTPRoute and Gateway, and wait for GKE to remove the load balancer.** The loop waits until the project has no forwarding rules, target HTTPS proxies, URL maps, backend services, or health checks, so use it in a project that hosts only this platform:
+**2. Delete the HTTPRoute and Gateway, and wait for GKE to remove the load balancer.** The loop waits until the project has no forwarding rules, target HTTPS proxies, URL maps, backend services, health checks, or network endpoint groups, so use it in a project that hosts only this platform. GKE creates a network endpoint group for the Service behind the Gateway; one left behind blocks the network's deletion later:
 
 ```bash
 kubectl --context "$CONTEXT" -n $ENVIRONMENT delete httproute,gateway --all
-until [ -z "$(for r in forwarding-rules target-https-proxies url-maps backend-services health-checks; do gcloud compute $r list --project="$PROJECT_ID" --format='value(name)'; done)" ]; do sleep 20; done; date -u
+until [ -z "$(for r in forwarding-rules target-https-proxies url-maps backend-services health-checks network-endpoint-groups; do gcloud compute $r list --project="$PROJECT_ID" --format='value(name)'; done)" ]; do sleep 20; done; date -u
 ```
 
-**3. Remove the lab.** Expect 11 resources to destroy, all of them lab resources:
+If the loop still waits after 10 minutes and only network endpoint groups remain, delete them by name:
+
+```bash
+gcloud compute network-endpoint-groups list --project="$PROJECT_ID" --format="value(name,zone.basename())"
+gcloud compute network-endpoint-groups delete NEG_NAME --zone="$ZONE" --project="$PROJECT_ID" --quiet
+```
+
+**3. Remove the lab.** Expect 11 resources to destroy, all of them lab resources, or 15 after an inference session:
 
 ```bash
 terraform -chdir=infra/env/staging plan -var=lab_enabled=false -out=../../private/lab-off.tfplan

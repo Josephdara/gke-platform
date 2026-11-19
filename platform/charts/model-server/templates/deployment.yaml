@@ -74,13 +74,17 @@ spec:
               value: {{ .Values.startup.downloadTimeoutSeconds | quote }}
             - name: PYTHONDONTWRITEBYTECODE
               value: "1"
+          # The model files land in the models emptyDir, which counts against the
+          # Pod's ephemeral-storage limit, not this container's.
           resources:
             requests:
               cpu: 200m
               memory: 128Mi
+              ephemeral-storage: 128Mi
             limits:
               cpu: 500m
               memory: 256Mi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - name: models
               mountPath: /models
