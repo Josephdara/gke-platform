@@ -53,6 +53,7 @@ The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a runn
 | Path | Contents |
 | --- | --- |
 | [`apps/platform-verification-api/`](apps/platform-verification-api/) | FastAPI service I use to verify deployment, health, configuration, logging, and metrics. See its [README](apps/platform-verification-api/README.md) |
+| [`apps/rag-api/`](apps/rag-api/) | FastAPI service for the assistant: grounded prompts, streamed answers, citation checks, and admission limits. See its [README](apps/rag-api/README.md) |
 | [`platform/charts/service/`](platform/charts/service/) | Shared Helm chart that deploys one HTTP service |
 | [`platform/charts/model-server/`](platform/charts/model-server/) | Helm chart that deploys one model server, with a verified model download and inference limits |
 | [`platform/services/platform-verification-api/`](platform/services/platform-verification-api/) | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml` |

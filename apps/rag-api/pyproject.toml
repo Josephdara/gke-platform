@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-api"
+version = "0.1.0"
+description = "Retrieval-augmented chat API for the GKE application platform"
+requires-python = ">=3.12"
+dependencies = ["fastapi==0.141.1", "httpx==0.28.1", "prometheus-client==0.26.0", "uvicorn==0.54.0"]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[project.scripts]
+rag-api = "rag_api.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"

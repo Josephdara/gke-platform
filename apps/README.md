@@ -5,6 +5,7 @@ These are the services the platform deploys. Each service has its own README wit
 | Service | Contents |
 | --- | --- |
 | [`platform-verification-api/`](platform-verification-api/) | FastAPI service I use to verify deployment, health, configuration, and logging. See its [README](platform-verification-api/README.md) |
+| [`rag-api/`](rag-api/) | FastAPI service that answers questions from retrieved passages and streams the answer as server-sent events. See its [README](rag-api/README.md) |
 
 ## Testing the Python service
 
