@@ -398,6 +398,20 @@ platform/tests/live-checks.sh
 
 It runs 9 checks: Argo CD health, the running image against Git, the mounted secret, DNS and egress, network isolation, admission in and outside `staging`, developer access, and HTTPS. Exit code `0` means every check passed. If only HTTPS fails in the first few minutes after the bootstrap, wait about 5 minutes and run it again.
 
+### Check the inference namespace
+
+In a session with `inference_cpu_enabled=true`, wait until `staging-profile` is `Synced/Healthy`, then run:
+
+```bash
+platform/tests/inference-checks.sh
+```
+
+Run it within an hour of the llm-cpu Pod starting: the image-pull times come from Kubernetes events, which expire. Most of its run time is the three full-size requests that measure the service time, and a wait of up to 5 minutes for the scaling metric.
+
+`PASS` and `FAIL` lines are checks: the model servers run the digests in Git, admission denies the broken inference fixtures, the allowed and unlisted callers get the expected answers, the llm-cpu identity reads the models bucket and is refused a secret, and the scaling metric reaches the HPA. `RECORD` lines are measurements for the evidence report and never fail the run: the cold-start stages of both model servers, the service time S of a request with about 2,000 prompt tokens and 384 output tokens, and the admission cap `parallel × (120 − S) / S` per replica.
+
+The script creates test Pods, a temporary namespace and the `staging-debug` service account, and deletes them on exit. Its default context is the reference environment's; set `CONTEXT` for your cluster. The project and owner labels on the test Pods come from `platform/services/llm-cpu/values.yaml`.
+
 ### End a session
 
 **1. Stop reconciliation**, on the root Application first and then on the service, so Argo CD stops recreating resources:
