@@ -315,7 +315,7 @@ docker stop local-registry
 
 ## Model-server chart
 
-[`charts/model-server/`](charts/model-server/) deploys one model server into `<environment>-inference`: llama.cpp for the chat model, or Text Embeddings Inference (TEI) for the embedding model. It is separate from the service chart, because a model server needs a model download, a long startup, inference limits, and a rollout that never asks for a second node. Version 0.1.0 has not run in a cluster yet.
+[`charts/model-server/`](charts/model-server/) deploys one model server into `<environment>-inference`: llama.cpp for the chat model, or Text Embeddings Inference (TEI) for the embedding model. It is separate from the service chart, because a model server needs a model download, a long startup, inference limits, and a rollout that never asks for a second node. Version 0.1.1 includes the fixes from its first run in the staging cluster; see the [evidence report](evidence/2026-11-19-inference-foundation.md).
 
 What it renders, and why:
 

@@ -367,7 +367,7 @@ metric_reaches_hpa() {
     [ "$(date +%s)" -ge "$deadline" ] && break
     sleep 15
   done
-  echo "metric for $pod: ${values:+returned}${values:-missing}, ScalingActive: ${active:-unknown}"
+  echo "metric for $pod: $([ -n "$values" ] && echo returned || echo missing), ScalingActive: ${active:-unknown}"
   k -n "$INFER_NS" get hpa staging-llm-cpu -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}{"\n"}{end}'
   [ -n "$values" ] && [ "$active" = True ]
 }

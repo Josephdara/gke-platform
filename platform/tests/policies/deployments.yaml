@@ -1240,7 +1240,7 @@ metadata:
     owner: "jd"
     app.kubernetes.io/version: "server-b12464"
     app.kubernetes.io/managed-by: "Helm"
-    helm.sh/chart: "model-server-0.1.0"
+    helm.sh/chart: "model-server-0.1.1"
 spec:
   revisionHistoryLimit: 3
   selector:
@@ -1264,13 +1264,13 @@ spec:
         owner: "jd"
         app.kubernetes.io/version: "server-b12464"
         app.kubernetes.io/managed-by: "Helm"
-        helm.sh/chart: "model-server-0.1.0"
+        helm.sh/chart: "model-server-0.1.1"
         component: model-server
         model: "qwen2.5-1.5b-instruct-q4-k-m"
         model-revision: "91cad51170dc346986eccefdc2dd33a9da36ead9"
       annotations:
         model-sha256: "67875cf7277daeb06945badce604b2f7405a3903987b4747b488d2e554af8058"
-        checksum/fetch: 4de37d00b395176e30ca49a01da1e281527cbf8d46d746a4612e63ba6340f390
+        checksum/fetch: f5d1e15385adb50ed304822404bdec603749c1c9fa8469cab32ed88c6513845f
     spec:
       serviceAccountName: staging-llm-cpu
       automountServiceAccountToken: false
@@ -1316,13 +1316,17 @@ spec:
               value: "600"
             - name: PYTHONDONTWRITEBYTECODE
               value: "1"
+          # The model files land in the models emptyDir, which counts against the
+          # Pod's ephemeral-storage limit, not this container's.
           resources:
             requests:
               cpu: 200m
               memory: 128Mi
+              ephemeral-storage: 128Mi
             limits:
               cpu: 500m
               memory: 256Mi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - name: models
               mountPath: /models
@@ -1453,7 +1457,7 @@ metadata:
     owner: "jd"
     app.kubernetes.io/version: "server-b12464"
     app.kubernetes.io/managed-by: "Helm"
-    helm.sh/chart: "model-server-0.1.0"
+    helm.sh/chart: "model-server-0.1.1"
 spec:
   revisionHistoryLimit: 3
   selector:
@@ -1477,10 +1481,10 @@ spec:
         owner: "jd"
         app.kubernetes.io/version: "server-b12464"
         app.kubernetes.io/managed-by: "Helm"
-        helm.sh/chart: "model-server-0.1.0"
+        helm.sh/chart: "model-server-0.1.1"
         model: "qwen2.5-1.5b-instruct-q4-k-m"
       annotations:
-        checksum/fetch: 4de37d00b395176e30ca49a01da1e281527cbf8d46d746a4612e63ba6340f390
+        checksum/fetch: f5d1e15385adb50ed304822404bdec603749c1c9fa8469cab32ed88c6513845f
     spec:
       serviceAccountName: staging-llm-cpu
       automountServiceAccountToken: false
@@ -1526,13 +1530,17 @@ spec:
               value: "600"
             - name: PYTHONDONTWRITEBYTECODE
               value: "1"
+          # The model files land in the models emptyDir, which counts against the
+          # Pod's ephemeral-storage limit, not this container's.
           resources:
             requests:
               cpu: 200m
               memory: 128Mi
+              ephemeral-storage: 128Mi
             limits:
               cpu: 500m
               memory: 256Mi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - name: models
               mountPath: /models
@@ -1663,7 +1671,7 @@ metadata:
     owner: "jd"
     app.kubernetes.io/version: "server-b12464"
     app.kubernetes.io/managed-by: "Helm"
-    helm.sh/chart: "model-server-0.1.0"
+    helm.sh/chart: "model-server-0.1.1"
 spec:
   revisionHistoryLimit: 3
   selector:
@@ -1687,13 +1695,13 @@ spec:
         owner: "jd"
         app.kubernetes.io/version: "server-b12464"
         app.kubernetes.io/managed-by: "Helm"
-        helm.sh/chart: "model-server-0.1.0"
+        helm.sh/chart: "model-server-0.1.1"
         component: model-server
         model: "qwen2.5-1.5b-instruct-q4-k-m"
         model-revision: "91cad51170dc346986eccefdc2dd33a9da36ead9"
       annotations:
         model-sha256: "67875cf7277daeb06945badce604b2f7405a3903987b4747b488d2e554af8058"
-        checksum/fetch: 4de37d00b395176e30ca49a01da1e281527cbf8d46d746a4612e63ba6340f390
+        checksum/fetch: f5d1e15385adb50ed304822404bdec603749c1c9fa8469cab32ed88c6513845f
     spec:
       serviceAccountName: staging-llm-cpu
       automountServiceAccountToken: false
@@ -1739,13 +1747,17 @@ spec:
               value: "600"
             - name: PYTHONDONTWRITEBYTECODE
               value: "1"
+          # The model files land in the models emptyDir, which counts against the
+          # Pod's ephemeral-storage limit, not this container's.
           resources:
             requests:
               cpu: 200m
               memory: 128Mi
+              ephemeral-storage: 128Mi
             limits:
               cpu: 500m
               memory: 256Mi
+              ephemeral-storage: 1Gi
           volumeMounts:
             - name: models
               mountPath: /models
