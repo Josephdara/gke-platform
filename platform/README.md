@@ -13,7 +13,7 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | [`services/llm-cpu/`](services/llm-cpu/), [`services/embeddings/`](services/embeddings/) | Model-server chart values for the chat model and the embedding model: `values.yaml` plus `values-staging.yaml` |
 | [`profiles/`](profiles/) | One folder per session profile. The `staging-profile` root Application syncs the active one; `cpu/` holds the llm-cpu Application |
 | [`namespaces/`](namespaces/)                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                |
-| [`tests/`](tests/)                                                           | Chart validation and live-check scripts; each chart's fixtures live in its own `tests/fixtures/`, and the policy fixtures in `tests/policies/` |
+| [`tests/`](tests/)                                                           | Chart validation, live-check and inference-check scripts; each chart's fixtures live in its own `tests/fixtures/`, and the policy fixtures in `tests/policies/` |
 | [`argocd/`](argocd/)                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
 | [`kyverno/`](kyverno/) | Kyverno install overlay: the pinned upstream manifest with images from the mirror repository |
 | [`custom-metrics/`](custom-metrics/) | Custom Metrics Stackdriver Adapter overlay, which exposes Managed Prometheus series to the HPA, with its image from the mirror repository |
