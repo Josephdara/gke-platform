@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: staging-inference
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  description: Inference Applications deployed into the staging-inference namespace
+  sourceRepos:
+    - https://github.com/Josephdara/gke-platform.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: staging-inference
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Service
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: batch
+      kind: CronJob
+    - group: secrets-store.csi.x-k8s.io
+      kind: SecretProviderClass
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: monitoring.googleapis.com
+      kind: PodMonitoring

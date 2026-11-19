@@ -1,0 +1,88 @@
+# staging denies egress by default, and the service chart's policies cover
+# ingress only. These rules open the paths staging workloads need toward the
+# inference namespace and Google APIs. Each target also needs a matching
+# ingress rule on its own side.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: staging-rag-api-egress
+  namespace: staging
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  podSelector:
+    matchLabels:
+      service: rag-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: staging-inference
+          podSelector:
+            matchExpressions:
+              - key: service
+                operator: In
+                values: [llm-cpu, embeddings]
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: staging-inference
+          podSelector:
+            matchLabels:
+              service: pgvector
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: staging-test-clients-egress
+  namespace: staging
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  podSelector:
+    matchExpressions:
+      - key: service
+        operator: In
+        values: [loadgen, debug]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: staging-inference
+          podSelector:
+            matchLabels:
+              service: llm-cpu
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              service: rag-api
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - ipBlock:
+            cidr: 199.36.153.8/30
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
