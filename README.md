@@ -124,7 +124,7 @@ I built and tested the current state with these versions. The Terraform and Goog
 
 | Tool | Version |
 | --- | --- |
-| Python | 3.14.8 (image and CI) |
+| Python | 3.14.10 (image and CI) |
 | Helm | 4.2.1 (the version bundled with Argo CD) |
 | Argo CD | 3.5.3 (core install) |
 | kubectl | 1.37.0 |

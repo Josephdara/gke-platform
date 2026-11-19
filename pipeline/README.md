@@ -40,7 +40,7 @@ Both triggers run in `us-east4` on the `staging-github` connection, which links 
 
 Every step must pass for the next one to run. In the validate build, `tools`, `chart`, and `terraform` run alongside the image steps. The push comes last, so an image is never published without its evidence: if the upload fails, nothing is pushed. Tags are immutable, so a published tag always names the same image.
 
-Builder images are pinned by digest: Python 3.14.8 (the same image the Dockerfile uses), the Cloud Builders Docker image, Trivy 0.74.0, and the Cloud SDK 587.0.0 slim image. The validate build's tools are pinned by checksum in `install_tools.py`.
+Builder images are pinned by digest: Python 3.14.10 (the same image the Dockerfile uses), the Cloud Builders Docker image, Trivy 0.74.0, and the Cloud SDK 587.0.0 slim image. The validate build's tools are pinned by checksum in `install_tools.py`.
 
 ## Finding a published image
 
@@ -101,7 +101,7 @@ Accepted findings still appear in `scan.json`, marked as suppressed.
 The base image digest is pinned in six places, and they must always match: the Dockerfile `FROM` line, the `test` step in both build files, and the `tools`, `chart`, and `terraform` steps in the validate build. This lists them:
 
 ```sh
-git grep -n "python:3.14.8-slim-bookworm@sha256"
+git grep -n "python:3.14.10-slim-bookworm@sha256"
 ```
 
 To check whether a fixed image exists:
@@ -109,13 +109,13 @@ To check whether a fixed image exists:
 1. Compare the digest pinned in the Dockerfile with the tag's current digest:
 
    ```sh
-   docker buildx imagetools inspect python:3.14.8-slim-bookworm | sed -n 3p
+   docker buildx imagetools inspect python:3.14.10-slim-bookworm | sed -n 3p
    ```
 
 2. If it differs, check the packages you need are fixed in the new image, for example:
 
    ```sh
-   docker run --rm --platform linux/amd64 python:3.14.8-slim-bookworm@sha256:<new digest> dpkg-query -W libssl3 openssl
+   docker run --rm --platform linux/amd64 python:3.14.10-slim-bookworm@sha256:<new digest> dpkg-query -W libssl3 openssl
    ```
 
 3. Update every pin, run the local gate below, and remove any accepted findings the new image fixes.

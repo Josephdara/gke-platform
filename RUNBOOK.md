@@ -646,19 +646,19 @@ Read the failing step's log, as in [Follow a build](#follow-a-build), or run the
 For a finding in the base image, check whether a newer image exists. Print the tag's current digest and compare it with the one in the Dockerfile's `FROM` line:
 
 ```bash
-docker buildx imagetools inspect python:3.14.8-slim-bookworm | sed -n 3p
+docker buildx imagetools inspect python:3.14.10-slim-bookworm | sed -n 3p
 ```
 
 Check that the new image has the fixed package versions, for example:
 
 ```bash
-docker run --rm --platform linux/amd64 python:3.14.8-slim-bookworm@sha256:NEW_DIGEST dpkg-query -W libssl3 openssl
+docker run --rm --platform linux/amd64 python:3.14.10-slim-bookworm@sha256:NEW_DIGEST dpkg-query -W libssl3 openssl
 ```
 
 Replace the digest everywhere it is pinned, in the Dockerfile and in the build files' steps, then run the local gate. This lists the pins, including the Markdown files that mention the image:
 
 ```bash
-git grep -n "python:3.14.8-slim-bookworm@sha256"
+git grep -n "python:3.14.10-slim-bookworm@sha256"
 ```
 
 For a finding in a Python package, raise its pin in `apps/platform-verification-api/requirements.txt`.
