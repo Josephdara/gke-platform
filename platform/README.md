@@ -13,7 +13,8 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | [`tests/`](tests/)                                                           | Chart validation and live-check scripts; the chart fixtures live in `charts/service/tests/fixtures/`, and the policy fixtures in `tests/policies/` |
 | [`argocd/`](argocd/)                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
 | [`kyverno/`](kyverno/) | Kyverno install overlay: the pinned upstream manifest with images from the mirror repository |
-| [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` namespace and its guardrails, the admission policies, the projects, the Kyverno Application, and one Application per service |
+| [`cluster/`](cluster/)                                                       | What the root Application manages: the `staging` and `staging-inference` namespaces and their guardrails, the admission policies, the projects, the Kyverno Application, and one Application per service |
+| [`mirror/`](mirror/) | Third-party inference images pinned by digest, and `mirror.sh`, which copies them into the mirror repository and scans them |
 | [`evidence/`](evidence/)                                                     | Reports from lab sessions: what was run, versions, timings, expected and actual results; see the [index](evidence/README.md) |
 
 
@@ -108,14 +109,14 @@ It is safe to rerun. With Kyverno and managed Prometheus, it took 9 minutes 28 s
 ### Checking status
 
 ```sh
-kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n argocd get applications.argoproj.io \
+kubectl --context gke_gke-build-proj_us-east4-a_staging-super-cluster -n argocd get applications.argoproj.io \
   -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REVISION:.status.sync.revision
 ```
 
 If an Application is not Synced, its conditions say why:
 
 ```sh
-kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n argocd get applications.argoproj.io <name> \
+kubectl --context gke_gke-build-proj_us-east4-a_staging-super-cluster -n argocd get applications.argoproj.io <name> \
   -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}'
 ```
 

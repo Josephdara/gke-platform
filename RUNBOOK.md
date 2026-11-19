@@ -41,9 +41,10 @@ Homebrew installs the newest releases; compare them with the tested versions, an
 | Reference value | What it is | Where it is set |
 | --- | --- | --- |
 | `gke-build-proj` | Project ID. It also prefixes the state buckets, image repository, evidence bucket, and kubectl context name | `infra/env/staging/variables.tf` and `backend.tf`; `platform/argocd/` (kustomization, namespace, `bootstrap.sh`); `platform/kyverno/kustomization.yaml`; `platform/cluster/` (namespace, approved-registry policy); `platform/namespaces/local.yaml`; the API's values files; `platform/tests/` (live checks, policy fixtures) |
-| `us-east4`, `us-east4-b` | Region and zone | `infra/env/staging/variables.tf`, and the same image paths and script defaults |
+| `us-east4`, `us-east4-a` | Region and zone | `infra/env/staging/variables.tf`, and the same image paths and script defaults |
 | `josephdara.com`, `gke.josephdara.com` | Parent domain, and the subdomain delegated to Cloud DNS | `infra/env/staging/main.tf` |
 | `api.staging.gke.josephdara.com` | API hostname, built as `api.<environment>.<subdomain>` | `platform/services/platform-verification-api/values-staging.yaml` |
+| `assistant.staging.gke.josephdara.com` | RAG assistant hostname, built the same way; its certificate comes from the `hosts` list | `infra/env/staging/main.tf` |
 | `Josephdara/gke-platform` | GitHub repository | `infra/env/staging/main.tf`, `infra/modules/alerts/main.tf`, `platform/argocd/root/`, and the projects and Applications in `platform/cluster/` |
 | `jd` | Owner label | `infra/env/staging/variables.tf`; the namespaces in `platform/argocd/namespace.yaml`, `platform/cluster/namespace-staging.yaml`, and `platform/namespaces/local.yaml`; the API's `values.yaml`; the policy fixtures |
 | `josephdara`, `https://josephdara.com` | Chart maintainer | `platform/charts/service/Chart.yaml` |
@@ -72,7 +73,7 @@ export PARENT_DOMAIN=YOUR_PARENT_DOMAIN
 export OWNER=YOUR_OWNER_LABEL
 export BILLING_DATASET=YOUR_BILLING_DATASET
 # Region and zone: match your checked-in configuration.
-export REGION=us-east4 ZONE=us-east4-b ENVIRONMENT=staging
+export REGION=us-east4 ZONE=us-east4-a ENVIRONMENT=staging
 # Derived names.
 export API_HOST=api.$ENVIRONMENT.$DNS_ZONE_NAME URL=https://api.$ENVIRONMENT.$DNS_ZONE_NAME/
 export CLUSTER=$ENVIRONMENT-super-cluster APP=$ENVIRONMENT-platform-verification-api
@@ -122,6 +123,8 @@ Do these in order. **Steps marked By hand are not represented in code**: they li
 | [Add secret values](#add-secret-values) | By hand | Secret Manager |
 | [Delegate DNS to Cloud DNS](#delegate-dns-to-cloud-dns) | By hand | Your DNS host |
 | [Mirror the controller images](#mirror-the-controller-images) | By hand | Artifact Registry |
+| [Mirror the inference images](#mirror-the-inference-images) | Script, with your credentials | `platform/mirror/`; Artifact Registry and the evidence bucket |
+| [Upload the models](#upload-the-models) | Script, with your credentials | `models/`; the models bucket |
 | [Protect the main branch](#protect-the-main-branch) | By hand | GitHub repository settings |
 | [Publish and release the first image](#publish-and-release-the-first-image) | Pipeline and pull request | `apps/`, `platform/services/` |
 
@@ -232,7 +235,7 @@ Review the plan, then apply it:
 terraform -chdir=infra/env/staging apply ../../private/persistent.tfplan
 ```
 
-This creates the APIs, the image and mirror repositories, the service accounts, the evidence bucket and build triggers, the secrets, the DNS zone, and the certificate. The [infrastructure README](infra/README.md#what-terraform-manages) lists every resource. Persistent resources are protected against deletion.
+This creates the APIs, the image and mirror repositories, the models bucket, the service accounts, the evidence bucket and build triggers, the secrets, the DNS zone, and the API and assistant certificates. The [infrastructure README](infra/README.md#what-terraform-manages) lists every resource. Persistent resources are protected against deletion.
 
 Pass `-var=lab_enabled=…` on every plan. It defaults to `false`, and a plan with `false` removes the lab.
 
@@ -273,6 +276,10 @@ dig @8.8.8.8 CNAME "_acme-challenge.${API_HOST}" +short
 gcloud certificate-manager certificates describe $ENVIRONMENT-api-cert --project="$PROJECT_ID" --format="yaml(managed.state,managed.authorizationAttemptInfo)"
 ```
 
+```bash
+gcloud certificate-manager certificates describe $ENVIRONMENT-assistant-cert --project="$PROJECT_ID" --format="yaml(managed.state)"
+```
+
 Expect the Cloud DNS name servers, a CNAME ending in `authorize.certificatemanager.goog.`, and, usually within an hour of the delegation resolving, `state: ACTIVE`.
 
 ### Mirror the controller images
@@ -304,6 +311,38 @@ IMAGES
 ```
 
 Expect 7 lines, each with the copy's digest. The block stops at the first failed copy or mismatched digest. If a registry answers `TOOMANYREQUESTS`, wait a minute and run it again. When you upgrade a controller, update this list with the digests in the kustomization files.
+
+### Mirror the inference images
+
+**Script, with your credentials.** The model servers, the vector database, the model download step, and the metrics adapter run third-party images. [`platform/mirror/images.yaml`](platform/mirror/images.yaml) pins each one by digest. The script copies each image unchanged into `staging-mirror`, checks the copy kept its digest, scans it with Trivy, and uploads the report to `inference/mirror/<date>/` in the evidence bucket. These images are not gated on the scan, because the platform does not rebuild them. Record each image's decision in its `images.yaml` entry, with a `reviewBy` date; `--check` fails once that date passes or when an entry has no decision.
+
+First, check that every pinned digest still exists upstream. This needs no credentials:
+
+```bash
+platform/mirror/mirror.sh --check
+```
+
+Then mirror and scan. It reads `PROJECT_ID`, `REGION`, and `ENVIRONMENT`:
+
+```bash
+platform/mirror/mirror.sh
+```
+
+Expect one `PASS` line per image. To change an image, update its source, digest, and target in `images.yaml`, then run both commands again.
+
+### Upload the models
+
+**Script, with your credentials.** Each model has a manifest in [`models/`](models/) that pins the Hugging Face revision and every file's size and SHA-256; [`models/schema.json`](models/schema.json) describes the format. The script downloads the files at that revision, checks each one against the manifest, and uploads them to the models bucket only if all match. Downloads are kept in `~/.cache/gke-platform-models`, or in `MODEL_CACHE` if you set it. The chat model is about 1.1 GB:
+
+```bash
+models/upload-model.sh models/qwen2.5-1.5b-instruct-q4-k-m.yaml
+```
+
+```bash
+models/upload-model.sh models/bge-small-en-v1.5.yaml
+```
+
+Expect a `PASS` line per file, then the bucket listing. If a file fails its check, nothing is uploaded; delete that file from the cache and run the script again.
 
 ### Protect the main branch
 

@@ -189,7 +189,7 @@ GKE runs Kubernetes: Google operates the control plane, and the cluster's nodes 
 
 `staging-router` and `staging-nat` give the private nodes and Pods outbound access, covering all of the subnet's ranges, with automatically allocated IPs and logging only errors. Argo CD needs that path to read GitHub; the controller images come from the mirror instead.
 
-**Cluster.** The [GKE module](infra/modules/gke/main.tf) creates `staging-super-cluster`, a zonal GKE Standard cluster in `us-east4-b`:
+**Cluster.** The [GKE module](infra/modules/gke/main.tf) creates `staging-super-cluster`, a zonal GKE Standard cluster in `us-east4-a`:
 
 | Setting | Value | Effect |
 | --- | --- | --- |

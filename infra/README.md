@@ -8,14 +8,14 @@ This is how I set up and run the GCP side of the platform in project `gke-build-
 | --- | --- |
 | [`bootstrap/`](bootstrap/) | Bootstrap script and the retention rule for old Terraform state versions |
 | [`env/staging/`](env/staging/) | The Terraform root: version constraints, backend, provider, variables, and module calls |
-| [`modules/foundation/`](modules/foundation/) | Required APIs, including Cloud Build and Container Analysis, and the Artifact Registry image and mirror repositories |
+| [`modules/foundation/`](modules/foundation/) | Required APIs, including Cloud Build and Container Analysis, the Artifact Registry image and mirror repositories, and the models bucket |
 | [`modules/identity/`](modules/identity/) | The GKE node and Cloud Build service accounts and their project roles |
 | [`modules/pipeline/`](modules/pipeline/) | Build evidence bucket, Cloud Build repository link, and the two build triggers |
-| [`modules/secrets/`](modules/secrets/) | Secret Manager secrets, each service's read grants, and Data Access audit logging for Secret Manager |
-| [`modules/edge/`](modules/edge/) | DNS zone, Certificate Manager certificate and map, and the lab's static IP and A record |
-| [`modules/network/`](modules/network/) | Lab network: VPC, subnet, Cloud Router, and Cloud NAT |
-| [`modules/gke/`](modules/gke/) | Lab GKE cluster and node pool |
-| [`tests/`](tests/) | Terraform validation script and its test input |
+| [`modules/secrets/`](modules/secrets/) | Secret Manager secrets, the read grants for each secret's readers, and Data Access audit logging for Secret Manager |
+| [`modules/edge/`](modules/edge/) | DNS zone, a Certificate Manager certificate per hostname, the certificate map, and the lab's static IP and A record |
+| [`modules/network/`](modules/network/) | Lab network: VPC, subnet, Cloud Router, Cloud NAT, and the private DNS zone for Google APIs |
+| [`modules/gke/`](modules/gke/) | Lab GKE cluster, its general node pool, and the inference CPU pool |
+| [`tests/`](tests/) | Terraform validation script and its test input. The session flag tests are in [`env/staging/tests/`](env/staging/tests/) |
 | [`.trivyignore.yaml`](.trivyignore.yaml) | Accepted Trivy findings, each with a reason and an expiry date |
 | `private/` | Saved Terraform plans. Git ignores it |
 
@@ -29,17 +29,19 @@ Persistent resources stay between sessions and are protected against deletion. L
 | --- | --- | --- |
 | Required APIs | Artifact Registry, Compute Engine, Kubernetes Engine, Logging, Monitoring, Secret Manager, Cloud Build, Container Analysis, Cloud DNS, Certificate Manager | Persistent |
 | Image repository | `gke-build-proj-staging-images` (named before the `<environment>-<purpose>` convention) | Persistent |
-| Mirror repository | `staging-mirror`: controller images copied unchanged from upstream, with no cleanup policy, protected against deletion | Persistent |
+| Mirror repository | `staging-mirror`: controller and inference serving images copied unchanged from upstream, with no cleanup policy, protected against deletion | Persistent |
+| Models bucket | `gke-build-proj-staging-models`: model files and corpus snapshots, versioned, with old versions deleted after 30 days, protected against deletion. The `staging-llm-cpu` and `staging-embeddings` Kubernetes service accounts in `staging-inference` can read it | Persistent |
 | Node service account | `staging-nodes-sa`, with read access to the image and mirror repositories | Persistent |
 | Build service accounts | `staging-build-validate-sa`, which can only write logs; `staging-build-publish-sa`, which can also write to the image repository, and create and list objects in the evidence bucket but not read, overwrite, or delete them | Persistent |
 | Build evidence bucket | `gke-build-proj-staging-build-evidence`: scan reports and SBOMs, deleted after 90 days, protected against deletion | Persistent |
-| Secrets | `staging-platform-verification-api-demo`, readable only by the API's Kubernetes service account, and `staging-forbidden-demo`, with no grants. Values are added by hand, never through Terraform. Data Access audit logs record every read | Persistent |
+| Secrets | `staging-platform-verification-api-demo`, readable only by the API's Kubernetes service account in `staging`, and `staging-forbidden-demo`, with no grants. Values are added by hand, never through Terraform. Data Access audit logs record every read | Persistent |
 | Build triggers | Repository link `gke-platform`, and triggers `staging-pr-validate` and `staging-main-publish`; see the [pipeline README](../pipeline/README.md) | Persistent |
-| DNS and certificate | Zone `staging-dns` for `gke.josephdara.com`, with DNSSEC; certificate `staging-api-cert` for `api.staging.gke.josephdara.com`, validated through DNS authorization `staging-api-dns-auth`; certificate map `staging-cert-map`. All protected against deletion | Persistent |
+| DNS and certificates | Zone `staging-dns` for `gke.josephdara.com`, with DNSSEC; certificates `staging-api-cert` for `api.staging.gke.josephdara.com` and `staging-assistant-cert` for `assistant.staging.gke.josephdara.com`, each validated through its own DNS authorization (`staging-api-dns-auth`, `staging-assistant-dns-auth`) and listed in certificate map `staging-cert-map`. All protected against deletion | Persistent |
 | Network | `staging-vpc`; subnet `staging-nodes-subnet` (10.40.0.0/24, pods 10.41.0.0/20, services 10.42.0.0/24) with Private Google Access | Lab |
 | Outbound access | `staging-router` and `staging-nat` | Lab |
-| Cluster | `staging-super-cluster`: zonal in us-east4-b, Regular channel from 1.36, private nodes, DNS endpoint only, NodeLocal DNSCache, managed Prometheus collection with Deployment kube state metrics, no RBAC bindings to `system:authenticated` or `system:unauthenticated` | Lab |
-| Node pool | `staging-super-pool`: 2 to 3 e2-standard-2 nodes, 30 GB pd-balanced disks | Lab |
+| Google APIs DNS | Private zone `staging-googleapis`: `*.googleapis.com` resolves to `private.googleapis.com` (199.36.153.8/30) inside `staging-vpc` | Lab |
+| Cluster | `staging-super-cluster`: zonal in us-east4-a, Regular channel from 1.36, private nodes, DNS endpoint only, NodeLocal DNSCache, managed Prometheus collection with Deployment, HPA, Pod, and StatefulSet kube state metrics, no RBAC bindings to `system:authenticated` or `system:unauthenticated` | Lab |
+| Node pools | `staging-super-pool`: 2 to 4 e2-standard-2 nodes, 30 GB pd-balanced disks. `staging-infer-cpu-pool`, only with `inference_cpu_enabled=true`: 0 to 2 n2d-standard-4 nodes, 50 GB pd-balanced disks, taint and label `workload-class=llm-cpu`, upgrades one node at a time without a surge node | Lab |
 | Gateway address | Global static IP `staging-gateway-ip`, and the A record `api.staging.gke.josephdara.com` pointing to it | Lab |
 | Alert policies | `staging-no-ready-replicas`, `staging-error-rate`, and `staging-latency`, which email the `staging-alerts` channel; see [Alert email channel](#alert-email-channel) | Lab |
 
@@ -51,6 +53,8 @@ A session lasts at most 24 hours from creation to removal. For every change, sav
 
 Always pass `-var=lab_enabled=…` on every plan. The variable defaults to `false`, so a plan without it proposes removing the lab. If you see a plan like that during a session, discard it. To plan any other change during a session, use `-var=lab_enabled=true` so the lab stays in place.
 
+Inference sessions also pass `-var=inference_cpu_enabled=true`, which adds `staging-infer-cpu-pool`. Terraform rejects it unless `lab_enabled` is also `true`. For warm scale-up tests, `-var=inference_min_nodes=1` or `2` keeps that many inference nodes running.
+
 Because of `-chdir`, plan paths are relative to `infra/env/staging/`, so `../../private/` is `infra/private/`.
 
 ### Start a session
@@ -59,6 +63,12 @@ Because of `-chdir`, plan paths are relative to `infra/env/staging/`, so `../../
 
    ```bash
    terraform -chdir=infra/env/staging plan -var=lab_enabled=true -out=../../private/lab-on.tfplan
+   ```
+
+   For an inference session, add the inference flag:
+
+   ```bash
+   terraform -chdir=infra/env/staging plan -var=lab_enabled=true -var=inference_cpu_enabled=true -out=../../private/lab-on.tfplan
    ```
 
 2. Apply the saved plan:
@@ -70,7 +80,7 @@ Because of `-chdir`, plan paths are relative to `infra/env/staging/`, so `../../
 3. Get credentials through the DNS endpoint. The cluster has no IP endpoints:
 
    ```bash
-   gcloud container clusters get-credentials staging-super-cluster --zone=us-east4-b --project=gke-build-proj --dns-endpoint
+   gcloud container clusters get-credentials staging-super-cluster --zone=us-east4-a --project=gke-build-proj --dns-endpoint
    ```
 
 4. Install Argo CD and hand the cluster over to Git. Run this from an up-to-date `main`, because it applies `platform/argocd/` from your checkout:
@@ -83,24 +93,24 @@ Because of `-chdir`, plan paths are relative to `infra/env/staging/`, so `../../
 
    The Gateway's load balancer can take a few minutes longer. In my last lab session, HTTPS returned 404 two minutes after the bootstrap and 200 six minutes after.
 
-Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `kubectl` and `helm` command. Your kubectl must be within one minor version of the cluster (1.36).
+Pass `--context gke_gke-build-proj_us-east4-a_staging-super-cluster` on every `kubectl` and `helm` command. Your kubectl must be within one minor version of the cluster (1.36).
 
 ### End a session
 
 1. Stop Argo CD from recreating resources. Turn off automated sync on the root Application first, because it would otherwise restore the service Application's automation, then on the service Application:
 
    ```bash
-   kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n argocd patch applications.argoproj.io staging-platform --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
+   kubectl --context gke_gke-build-proj_us-east4-a_staging-super-cluster -n argocd patch applications.argoproj.io staging-platform --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
    ```
 
    ```bash
-   kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n argocd patch applications.argoproj.io staging-platform-verification-api --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
+   kubectl --context gke_gke-build-proj_us-east4-a_staging-super-cluster -n argocd patch applications.argoproj.io staging-platform-verification-api --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
    ```
 
    Then delete the objects that create cloud resources while the cluster still exists, starting with the HTTPRoute and the Gateway. Otherwise their load balancer is left behind:
 
    ```bash
-   kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster -n staging delete httproute,gateway --all
+   kubectl --context gke_gke-build-proj_us-east4-a_staging-super-cluster -n staging delete httproute,gateway --all
    ```
 
    Wait until GKE has removed the load balancer, which can take a few minutes. Backend services and health checks go last, so this loop ends only when all five lists are empty:
@@ -112,11 +122,11 @@ Pass `--context gke_gke-build-proj_us-east4-b_staging-super-cluster` on every `k
    Both of these must print nothing:
 
    ```bash
-   kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster get svc -A --field-selector spec.type=LoadBalancer --no-headers
+   kubectl --context gke_gke-build-proj_us-east4-a_staging-super-cluster get svc -A --field-selector spec.type=LoadBalancer --no-headers
    ```
 
    ```bash
-   kubectl --context gke_gke-build-proj_us-east4-b_staging-super-cluster get gateway -A --no-headers
+   kubectl --context gke_gke-build-proj_us-east4-a_staging-super-cluster get gateway -A --no-headers
    ```
 
 2. Plan with the lab off, and check that it removes only lab resources:
@@ -245,18 +255,19 @@ Run this before every commit. It needs Terraform and Trivy, but no cloud credent
 bash infra/tests/validate-terraform.sh
 ```
 
-It runs six checks:
+It runs seven checks:
 
 1. Formatting: `terraform fmt` has nothing to change.
 2. No `terraform.tfvars` or `*.auto.tfvars` anywhere under `infra/`, so every run uses committed values only.
 3. Init without the backend and with a read-only lock file. Init fails if the providers no longer match the committed `.terraform.lock.hcl`.
 4. Validate with `lab_enabled` set to `false`.
 5. Validate with `lab_enabled` set to `true`.
-6. Trivy misconfiguration scan of `infra/`, failing on MEDIUM, HIGH, and CRITICAL findings.
+6. Session flag rules: [`env/staging/tests/flags.tftest.hcl`](env/staging/tests/flags.tftest.hcl) plans the root against a mocked Google provider and checks that `inference_cpu_enabled` is rejected without `lab_enabled` and plans the inference pool with it. `terraform validate` does not evaluate variable validation rules, so this uses `terraform test`.
+7. Trivy misconfiguration scan of `infra/`, failing on MEDIUM, HIGH, and CRITICAL findings.
 
 Exit codes: 0 when all checks pass, 1 when a check fails, 2 for a missing tool.
 
-[`tests/lab-on.tfvars`](tests/lab-on.tfvars) sets `lab_enabled` to `true` for the Trivy scan only, so Trivy scans the resources behind the toggle with an explicit value. Terraform never loads the file on its own.
+[`tests/lab-on.tfvars`](tests/lab-on.tfvars) sets `lab_enabled` and `inference_cpu_enabled` to `true` for the Trivy scan only, so Trivy scans the resources behind both toggles with an explicit value. Terraform never loads the file on its own.
 
 To accept a Trivy finding, add an entry to [`.trivyignore.yaml`](.trivyignore.yaml) with:
 
@@ -290,3 +301,4 @@ I used these versions:
 | Workload secrets, per-service grants, and Secret Manager audit logs | Verified in a lab session on 2026-10-06; see the [evidence report](../platform/evidence/2026-10-06-isolation.md) |
 | DNS zone, certificate, mirror repository, and cluster hardening | Verified in a lab session on 2026-10-07; see the [evidence report](../platform/evidence/2026-10-07-admission.md) |
 | Managed Prometheus, kube state metrics, and alert policies | Verified in a lab session on 2026-10-07; see the [evidence report](../platform/evidence/2026-10-07-acceptance.md) |
+| Models bucket, assistant certificate, inference CPU pool, and private DNS zone for Google APIs | Written; not yet applied |
