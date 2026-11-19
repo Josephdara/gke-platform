@@ -32,6 +32,7 @@ Persistent resources stay between sessions and are protected against deletion. L
 | Mirror repository | `staging-mirror`: controller and inference serving images copied unchanged from upstream, with no cleanup policy, protected against deletion | Persistent |
 | Models bucket | `gke-build-proj-staging-models`: model files and corpus snapshots, versioned, with old versions deleted after 30 days, protected against deletion. The `staging-llm-cpu` and `staging-embeddings` Kubernetes service accounts in `staging-inference` can read it | Persistent |
 | Node service account | `staging-nodes-sa`, with read access to the image and mirror repositories | Persistent |
+| Metrics adapter access | `roles/monitoring.viewer` on the project for the `custom-metrics-stackdriver-adapter` Kubernetes service account in `custom-metrics`, so the HPA can read Managed Prometheus series | Persistent |
 | Build service accounts | `staging-build-validate-sa`, which can only write logs; `staging-build-publish-sa`, which can also write to the image repository, and create and list objects in the evidence bucket but not read, overwrite, or delete them | Persistent |
 | Build evidence bucket | `gke-build-proj-staging-build-evidence`: scan reports and SBOMs, deleted after 90 days, protected against deletion | Persistent |
 | Secrets | `staging-platform-verification-api-demo`, readable only by the API's Kubernetes service account in `staging`, and `staging-forbidden-demo`, with no grants. Values are added by hand, never through Terraform. Data Access audit logs record every read | Persistent |
@@ -43,7 +44,7 @@ Persistent resources stay between sessions and are protected against deletion. L
 | Cluster | `staging-super-cluster`: zonal in us-east4-a, Regular channel from 1.36, private nodes, DNS endpoint only, NodeLocal DNSCache, managed Prometheus collection with Deployment, HPA, Pod, and StatefulSet kube state metrics, no RBAC bindings to `system:authenticated` or `system:unauthenticated` | Lab |
 | Node pools | `staging-super-pool`: 2 to 4 e2-standard-2 nodes, 30 GB pd-balanced disks. `staging-infer-cpu-pool`, only with `inference_cpu_enabled=true`: 0 to 2 n2d-standard-4 nodes, 50 GB pd-balanced disks, taint and label `workload-class=llm-cpu`, upgrades one node at a time without a surge node | Lab |
 | Gateway address | Global static IP `staging-gateway-ip`, and the A record `api.staging.gke.josephdara.com` pointing to it | Lab |
-| Alert policies | `staging-no-ready-replicas`, `staging-error-rate`, and `staging-latency`, which email the `staging-alerts` channel; see [Alert email channel](#alert-email-channel) | Lab |
+| Alert policies | `staging-no-ready-replicas` (Deployments in the `staging` namespace only), `staging-error-rate`, and `staging-latency`, which email the `staging-alerts` channel; see [Alert email channel](#alert-email-channel) | Lab |
 
 Terraform does not manage the budget, the billing export, or the alert email channel; all three are set up by hand in the console. See [Budget and billing export](#budget-and-billing-export) and [Alert email channel](#alert-email-channel).
 
