@@ -86,7 +86,7 @@ Developers have read-only access in their environment's namespaces to Pods, Pod 
 
 In `staging`, a ResourceQuota bounds the namespace at 2 CPU and 2Gi of requests, 4 CPU and 4Gi of limits, and 15 Pods, which fits rag-api and the load generator beside the verification service. A LimitRange supplies default requests of 50m CPU and 64Mi, default limits of 200m CPU and 128Mi, and a per-container maximum of 500m CPU and 256Mi.
 
-In `staging-inference`, the quota is 8 CPU and 26Gi of requests, 10 CPU and 32Gi of limits, 12 Pods, 2 PersistentVolumeClaims, and 20Gi of storage. Its LimitRange supplies defaults of 100m CPU and 128Mi, a per-container maximum of 4 CPU and 16Gi, and an ephemeral-storage maximum of 40Gi, so model files fit in emptyDir volumes. Quotas are revisited if more services are added.
+In `staging-inference`, the quota is 8 CPU and 26Gi of requests, 10 CPU and 32Gi of limits, 12 Pods, 2 PersistentVolumeClaims, and 20Gi of storage. Its LimitRange supplies defaults of 100m CPU and 128Mi, ephemeral-storage defaults of a 128Mi request and a 1Gi limit, a per-container maximum of 4 CPU and 16Gi, and an ephemeral-storage maximum of 40Gi, so model files fit in emptyDir volumes. The ephemeral-storage defaults are explicit because Kubernetes otherwise uses the maximum as the default, which would make every container without its own setting request 40Gi. Quotas are revisited if more services are added.
 
 ## Secrets management
 
