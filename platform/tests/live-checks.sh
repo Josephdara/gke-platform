@@ -8,7 +8,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
-CONTEXT=${CONTEXT:-gke_gke-build-proj_us-east4-b_staging-super-cluster}
+CONTEXT=${CONTEXT:-gke_gke-build-proj_us-east4-a_staging-super-cluster}
 APP=staging-platform-verification-api
 VALUES=platform/services/platform-verification-api/values-staging.yaml
 CHECK_NS=live-check-$$

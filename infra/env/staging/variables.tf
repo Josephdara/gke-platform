@@ -8,7 +8,7 @@ variable "environment" {
 }
 variable "zone" {
   type    = string
-  default = "us-east4-b"
+  default = "us-east4-a"
 }
 variable "region" {
   type    = string
