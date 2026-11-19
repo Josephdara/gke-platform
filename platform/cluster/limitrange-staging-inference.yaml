@@ -8,12 +8,16 @@ metadata:
 spec:
   limits:
     - type: Container
+      # Without explicit ephemeral-storage defaults, Kubernetes copies the
+      # maximum into every container that sets none, such as an init container.
       defaultRequest:
         cpu: 100m
         memory: 128Mi
+        ephemeral-storage: 128Mi
       default:
         cpu: 100m
         memory: 128Mi
+        ephemeral-storage: 1Gi
       max:
         cpu: "4"
         memory: 16Gi
