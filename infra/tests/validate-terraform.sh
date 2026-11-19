@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Validates the Terraform configuration under infra/: formatting, the no-tfvars
 # rule, the committed provider lock file, configuration validity with the lab
-# on and off, and Trivy misconfiguration checks. Needs no cloud credentials.
+# on and off, the session flag rules, and Trivy misconfiguration checks. Needs
+# no cloud credentials.
 # Usage: infra/tests/validate-terraform.sh
 # Exit codes: 0 all checks passed, 1 a check failed, 2 setup problem.
 set -euo pipefail
@@ -72,6 +73,14 @@ for lab in false true; do
     fail "validate (lab_enabled=$lab)" "$WORK/validate-$lab.log"
   fi
 done
+
+# Session flag rules. validate does not evaluate variable validation, so
+# terraform test plans the root against a mocked provider instead.
+if terraform -chdir="$ROOT" test -no-color > "$WORK/test.log" 2>&1; then
+  pass "session flag rules (terraform test)"
+else
+  fail "session flag rules (terraform test)" "$WORK/test.log"
+fi
 
 # Trivy misconfiguration scan. The lab-on variables make Trivy evaluate the
 # resources behind the lab_enabled toggle, which the default would skip.

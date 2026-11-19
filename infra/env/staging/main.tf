@@ -138,6 +138,8 @@ module "gke" {
   subnet_id                  = module.network[0].subnetwork_id
   pods_range_id              = module.network[0].pods_range_name
   services_range_id          = module.network[0].services_range_name
+  inference_cpu_enabled      = var.inference_cpu_enabled
+  inference_min_nodes        = var.inference_min_nodes
   node_service_account_email = module.identity.node_service_account_email
   labels                     = { component = "gke" }
 }

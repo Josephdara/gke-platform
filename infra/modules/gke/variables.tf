@@ -33,3 +33,11 @@ variable "services_range_id" {
 variable "node_service_account_email" {
   type = string
 }
+
+variable "inference_cpu_enabled" {
+  type = bool
+}
+
+variable "inference_min_nodes" {
+  type = number
+}
