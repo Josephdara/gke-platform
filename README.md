@@ -59,7 +59,9 @@ The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a runn
 | [`platform/tests/`](platform/tests/) | Chart validation and live-check scripts, and the admission policy fixtures |
 | [`platform/argocd/`](platform/argocd/) | Argo CD install overlay, the root project and Application, and the bootstrap script |
 | [`platform/kyverno/`](platform/kyverno/) | Kyverno install overlay, with images from the mirror repository |
-| [`platform/cluster/`](platform/cluster/) | What Argo CD manages from Git: the `staging` namespace and its guardrails, the Gateway, the admission policies, the projects, and the Applications |
+| [`platform/cluster/`](platform/cluster/) | What Argo CD manages from Git: the `staging` and `staging-inference` namespaces and their guardrails, the Gateway, the admission policies, the projects, and the Applications |
+| [`platform/mirror/`](platform/mirror/) | Third-party inference images pinned by digest, and the script that mirrors and scans them |
+| [`models/`](models/) | Model manifests with pinned revisions and file hashes, their schema, and the upload script |
 | [`platform/evidence/`](platform/evidence/) | Reports from lab sessions; see the [index](platform/evidence/README.md) |
 | [`infra/`](infra/) | GCP bootstrap, Terraform root and modules, and Terraform validation |
 | [`RUNBOOK.md`](RUNBOOK.md) | Setup, lab sessions, releases, operations, and teardown, with commands |
@@ -82,6 +84,7 @@ The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a runn
 | Observability: metrics and email alerts | Done |
 | Acceptance tests: load, autoscaling, Pod failure, node drain | Done; a node upgrade rehearsal is still open |
 | Cost report | Planned |
+| AI inference, CPU stage: inference namespace, node pool, models bucket, and model manifests | In progress |
 
 What works today:
 
@@ -121,7 +124,7 @@ I built and tested the current state with these versions. The Terraform and Goog
 
 | Tool | Version |
 | --- | --- |
-| Python | 3.14.8 (image and CI) |
+| Python | 3.14.10 (image and CI) |
 | Helm | 4.2.1 (the version bundled with Argo CD) |
 | Argo CD | 3.5.3 (core install) |
 | kubectl | 1.37.0 |

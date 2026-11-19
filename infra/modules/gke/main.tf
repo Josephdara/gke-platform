@@ -73,7 +73,7 @@ resource "google_container_cluster" "super" {
   }
 
   monitoring_config {
-    enable_components = ["SYSTEM_COMPONENTS", "DEPLOYMENT"]
+    enable_components = ["SYSTEM_COMPONENTS", "DEPLOYMENT", "HPA", "POD", "STATEFULSET"]
     managed_prometheus {
       enabled = true
     }
@@ -97,7 +97,7 @@ resource "google_container_node_pool" "super_pool" {
 
   autoscaling {
     min_node_count = 2
-    max_node_count = 3
+    max_node_count = 4
   }
 
   management {
@@ -135,8 +135,65 @@ resource "google_container_node_pool" "super_pool" {
   }
 }
 
+resource "google_container_node_pool" "infer_cpu_pool" {
+  count = var.inference_cpu_enabled ? 1 : 0
 
+  project            = var.project_id
+  name               = "${var.environment}-infer-cpu-pool"
+  cluster            = google_container_cluster.super.name
+  location           = var.zone
+  initial_node_count = var.inference_min_nodes
 
+  autoscaling {
+    min_node_count = var.inference_min_nodes
+    max_node_count = 2
+  }
 
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
 
-  
+  upgrade_settings {
+    strategy        = "SURGE"
+    max_surge       = 0
+    max_unavailable = 1
+  }
+
+  node_config {
+    machine_type    = "n2d-standard-4"
+    disk_size_gb    = 50
+    disk_type       = "pd-balanced"
+    image_type      = "COS_CONTAINERD"
+    service_account = var.node_service_account_email
+    oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+    resource_labels = var.labels
+
+    labels = {
+      workload-class = "llm-cpu"
+    }
+
+    taint {
+      key    = "workload-class"
+      value  = "llm-cpu"
+      effect = "NO_SCHEDULE"
+    }
+
+    metadata = {
+      disable-legacy-endpoints = "true"
+    }
+
+    workload_metadata_config {
+      mode = "GKE_METADATA"
+    }
+
+    shielded_instance_config {
+      enable_secure_boot          = true
+      enable_integrity_monitoring = true
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [initial_node_count, node_count]
+  }
+}

@@ -79,3 +79,27 @@ resource "google_artifact_registry_repository" "mirror" {
 
   depends_on = [google_project_service.this]
 }
+
+resource "google_storage_bucket" "models" {
+  project                     = var.project_id
+  name                        = "${var.name_prefix}-models"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  labels                      = { component = "models" }
+  deletion_policy             = "PREVENT"
+
+  versioning {
+    enabled = true
+  }
+
+  lifecycle_rule {
+    condition {
+      days_since_noncurrent_time = 30
+      with_state                 = "ARCHIVED"
+    }
+    action {
+      type = "Delete"
+    }
+  }
+}

@@ -189,7 +189,7 @@ GKE runs Kubernetes: Google operates the control plane, and the cluster's nodes 
 
 `staging-router` and `staging-nat` give the private nodes and Pods outbound access, covering all of the subnet's ranges, with automatically allocated IPs and logging only errors. Argo CD needs that path to read GitHub; the controller images come from the mirror instead.
 
-**Cluster.** The [GKE module](infra/modules/gke/main.tf) creates `staging-super-cluster`, a zonal GKE Standard cluster in `us-east4-b`:
+**Cluster.** The [GKE module](infra/modules/gke/main.tf) creates `staging-super-cluster`, a zonal GKE Standard cluster in `us-east4-a`:
 
 | Setting | Value | Effect |
 | --- | --- | --- |
@@ -258,7 +258,7 @@ GKE runs Kubernetes: Google operates the control plane, and the cluster's nodes 
 - **Metrics** are served by a separate listener on `METRICS_PORT`, which starts in every environment: `http_requests_total` by method, route, and status, and a latency histogram. Route labels use the matched route template or `unmatched`, and unknown methods become `other`, so random requests cannot create new series. Health checks are not counted.
 - **Shutdown** stops accepting connections and lets requests finish within 20 seconds, inside Kubernetes' 30-second grace period.
 
-The [image](apps/platform-verification-api/Dockerfile) is built from `python:3.14.8-slim-bookworm`, pinned by digest, for `linux/amd64`; a separate `linux/arm64` build serves the local Docker Desktop cluster on Apple Silicon. It installs the pinned requirements as wheels only, runs `pip check`, then uninstalls pip. Python writes no bytecode and does not buffer its logs. The source is owned by root and readable by the app's user, `10001`. The command uses exec form, so signals reach Python directly. [`.dockerignore`](apps/platform-verification-api/.dockerignore) is an allowlist: only `requirements.txt` and the Python source can enter the image.
+The [image](apps/platform-verification-api/Dockerfile) is built from `python:3.14.10-slim-bookworm`, pinned by digest, for `linux/amd64`; a separate `linux/arm64` build serves the local Docker Desktop cluster on Apple Silicon. It installs the pinned requirements as wheels only, runs `pip check`, then uninstalls pip. Python writes no bytecode and does not buffer its logs. The source is owned by root and readable by the app's user, `10001`. The command uses exec form, so signals reach Python directly. [`.dockerignore`](apps/platform-verification-api/.dockerignore) is an allowlist: only `requirements.txt` and the Python source can enter the image.
 
 ### Why
 

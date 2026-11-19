@@ -6,3 +6,6 @@ namespaceSelector:
   - name: staging
     labels:
       kubernetes.io/metadata.name: staging
+  - name: staging-inference
+    labels:
+      kubernetes.io/metadata.name: staging-inference

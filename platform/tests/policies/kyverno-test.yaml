@@ -84,3 +84,48 @@ results:
     kind: Deployment
     result: fail
     isValidatingPolicy: true
+  - policy: require-approved-registry
+    resources: [mirror-in-inference]
+    kind: Deployment
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-approved-registry
+    resources: [mirror-in-staging]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-approved-registry
+    resources: [inference-breaks-all]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-image-digest
+    resources: [inference-breaks-all]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-resources
+    resources: [inference-breaks-all]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-labels
+    resources: [inference-breaks-all]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-service-account
+    resources: [inference-breaks-all]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: restrict-pod-security
+    resources: [inference-breaks-all]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true
+  - policy: require-read-only-root-filesystem
+    resources: [inference-breaks-all]
+    kind: Deployment
+    result: fail
+    isValidatingPolicy: true

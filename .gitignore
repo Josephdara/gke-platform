@@ -12,4 +12,6 @@ crash.log
 crash.*.log
 /platform-concepts-guide.md
 /ai-workload-plan.md
+/inference-plan.pdf
+.DS_Store
 

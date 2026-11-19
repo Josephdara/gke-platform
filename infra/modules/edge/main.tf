@@ -1,5 +1,6 @@
 locals {
   api_host = "api.${var.environment}.${var.dns_name}"
+  hosts    = { for h in var.hosts : h => "${h}.${var.environment}.${var.dns_name}" }
 }
 
 resource "google_dns_managed_zone" "this" {
@@ -13,30 +14,36 @@ resource "google_dns_managed_zone" "this" {
   }
 }
 
-resource "google_certificate_manager_dns_authorization" "api" {
+resource "google_certificate_manager_dns_authorization" "host" {
+  for_each = local.hosts
+
   project         = var.project_id
-  name            = "${var.environment}-api-dns-auth"
-  domain          = local.api_host
+  name            = "${var.environment}-${each.key}-dns-auth"
+  domain          = each.value
   deletion_policy = "PREVENT"
 }
 
-resource "google_dns_record_set" "api_authorization" {
+resource "google_dns_record_set" "host_authorization" {
+  for_each = local.hosts
+
   project      = var.project_id
   managed_zone = google_dns_managed_zone.this.name
-  name         = google_certificate_manager_dns_authorization.api.dns_resource_record[0].name
-  type         = google_certificate_manager_dns_authorization.api.dns_resource_record[0].type
+  name         = google_certificate_manager_dns_authorization.host[each.key].dns_resource_record[0].name
+  type         = google_certificate_manager_dns_authorization.host[each.key].dns_resource_record[0].type
   ttl          = 300
-  rrdatas      = [google_certificate_manager_dns_authorization.api.dns_resource_record[0].data]
+  rrdatas      = [google_certificate_manager_dns_authorization.host[each.key].dns_resource_record[0].data]
 }
 
-resource "google_certificate_manager_certificate" "api" {
+resource "google_certificate_manager_certificate" "host" {
+  for_each = local.hosts
+
   project         = var.project_id
-  name            = "${var.environment}-api-cert"
+  name            = "${var.environment}-${each.key}-cert"
   deletion_policy = "PREVENT"
 
   managed {
-    domains            = [local.api_host]
-    dns_authorizations = [google_certificate_manager_dns_authorization.api.id]
+    domains            = [each.value]
+    dns_authorizations = [google_certificate_manager_dns_authorization.host[each.key].id]
   }
 }
 
@@ -46,13 +53,35 @@ resource "google_certificate_manager_certificate_map" "this" {
   deletion_policy = "PREVENT"
 }
 
-resource "google_certificate_manager_certificate_map_entry" "api" {
+resource "google_certificate_manager_certificate_map_entry" "host" {
+  for_each = local.hosts
+
   project         = var.project_id
-  name            = "${var.environment}-api"
+  name            = "${var.environment}-${each.key}"
   map             = google_certificate_manager_certificate_map.this.name
-  hostname        = local.api_host
-  certificates    = [google_certificate_manager_certificate.api.id]
+  hostname        = each.value
+  certificates    = [google_certificate_manager_certificate.host[each.key].id]
   deletion_policy = "PREVENT"
+}
+
+moved {
+  from = google_certificate_manager_dns_authorization.api
+  to   = google_certificate_manager_dns_authorization.host["api"]
+}
+
+moved {
+  from = google_dns_record_set.api_authorization
+  to   = google_dns_record_set.host_authorization["api"]
+}
+
+moved {
+  from = google_certificate_manager_certificate.api
+  to   = google_certificate_manager_certificate.host["api"]
+}
+
+moved {
+  from = google_certificate_manager_certificate_map_entry.api
+  to   = google_certificate_manager_certificate_map_entry.host["api"]
 }
 
 resource "google_compute_global_address" "gateway" {

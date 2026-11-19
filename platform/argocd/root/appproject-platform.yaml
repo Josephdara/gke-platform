@@ -12,6 +12,8 @@ spec:
       namespace: argocd
     - server: https://kubernetes.default.svc
       namespace: staging
+    - server: https://kubernetes.default.svc
+      namespace: staging-inference
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
@@ -34,3 +36,7 @@ spec:
       kind: RoleBinding
     - group: gateway.networking.k8s.io
       kind: Gateway
+    - group: networking.gke.io
+      kind: GCPBackendPolicy
+    - group: networking.gke.io
+      kind: HealthCheckPolicy
