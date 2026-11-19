@@ -16,7 +16,7 @@ spec:
       matchExpressions:
         - key: kubernetes.io/metadata.name
           operator: In
-          values: [staging]
+          values: [staging, staging-inference]
     resourceRules:
       - apiGroups: [""]
         apiVersions: [v1]

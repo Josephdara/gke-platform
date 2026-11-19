@@ -16,7 +16,7 @@ spec:
       matchExpressions:
         - key: kubernetes.io/metadata.name
           operator: In
-          values: [staging]
+          values: [staging, staging-inference]
     resourceRules:
       - apiGroups: [""]
         apiVersions: [v1]
@@ -26,5 +26,5 @@ spec:
     - name: containers
       expression: "object.spec.containers + object.spec.?initContainers.orValue([])"
   validations:
-    - expression: "variables.containers.all(c, c.image.startsWith('us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/'))"
-      message: "Every container image must come from us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/. Publish the image through the pipeline and use that repository."
+    - expression: "variables.containers.all(c, c.image.startsWith('us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/') || (object.metadata.namespace == 'staging-inference' && c.image.startsWith('us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/')))"
+      message: "Every container image must come from us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/, or in staging-inference also from us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/. Publish the image through the pipeline, or mirror a third-party serving image by digest."
