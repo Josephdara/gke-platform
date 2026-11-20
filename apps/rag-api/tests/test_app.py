@@ -23,6 +23,7 @@ def test_readiness_does_not_depend_on_the_model(make_app):
         assert client.get("/readyz").status_code == 200
         status = client.get("/api/status").json()
     assert status["model"] == {"runtime": "llamacpp", "alias": "assistant-chat", "status": "unavailable"}
+    assert status["retrieval"] == {"status": "ok"}
     assert status["promptVersion"] == "grounded-v1"
     assert status["admission"] == {"active": 0, "limit": 3}
 

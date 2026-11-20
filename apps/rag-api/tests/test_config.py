@@ -52,3 +52,23 @@ def test_errors_do_not_echo_values():
     with pytest.raises(ConfigurationError) as error:
         Settings.from_env({**BASE, "LOG_LEVEL": "sensitive-invalid-value"})
     assert "sensitive-invalid-value" not in str(error.value)
+
+
+def test_retrieval_is_off_without_a_database():
+    settings = Settings.from_env(BASE)
+    assert (settings.database_host, settings.embeddings_url, settings.similarity_floor) == (None, None, 0.0)
+    assert (settings.database_user, settings.retrieval_top_k) == ("rag_api", 5)
+
+
+@pytest.mark.parametrize("missing", ["DATABASE_PASSWORD_FILE", "EMBEDDINGS_URL"])
+def test_a_database_needs_its_password_and_the_embeddings_server(missing):
+    env = {**BASE, "DATABASE_HOST": "pgvector", "DATABASE_PASSWORD_FILE": "/run/p", "EMBEDDINGS_URL": "http://e:8080"}
+    del env[missing]
+    with pytest.raises(ConfigurationError, match=missing):
+        Settings.from_env(env)
+
+
+@pytest.mark.parametrize("field, value", [("SIMILARITY_FLOOR", "1.5"), ("SIMILARITY_FLOOR", "high"), ("RETRIEVAL_TOP_K", "6")])
+def test_invalid_retrieval_settings(field, value):
+    with pytest.raises(ConfigurationError, match=field):
+        Settings.from_env({**BASE, field: value})

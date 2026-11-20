@@ -250,6 +250,14 @@ gcloud secrets versions list $APP-demo --project="$PROJECT_ID" --format="table(n
 
 Expect one enabled version.
 
+Then give each of the three database passwords a random value. The command prints nothing, so the values never reach your terminal or shell history:
+
+```bash
+for name in pgvector-admin pgvector-ingest pgvector-rag-api; do python3 -c 'import secrets; print(secrets.token_urlsafe(32), end="")' | gcloud secrets versions add "$ENVIRONMENT-$name" --project="$PROJECT_ID" --data-file=-; done
+```
+
+pgvector creates the `ingest` and `rag_api` roles from these when its database is first initialized, which happens in every session. A new version therefore takes effect in the next session.
+
 ### Delegate DNS to Cloud DNS
 
 **By hand, at your DNS host.** Terraform created the zone for your subdomain in Cloud DNS, with DNSSEC on, and the certificate's authorization record inside it. The parent domain must point to the zone.
@@ -344,6 +352,17 @@ models/upload-model.sh models/bge-small-en-v1.5.yaml
 
 Expect a `PASS` line per file, then the bucket listing. If a file fails its check, nothing is uploaded; delete that file from the cache and run the script again.
 
+### Build and upload the corpus
+
+**Script, with your credentials.** The assistant answers from the corpus that [`corpus/sources.json`](corpus/sources.json) lists: 25 Kubernetes documentation pages at a pinned commit, this repository's documentation, and two synthetic documents for the prompt-injection tests. Build a snapshot from a commit on `origin/main`, so every source link in it resolves, then check it and upload it to `corpus/<revision>/` in the models bucket. The [corpus README](corpus/README.md) describes both scripts:
+
+```bash
+corpus/build_corpus.py
+corpus/upload-corpus.sh corpus/build/<revision>
+```
+
+Expect `PASS` for every file and an object count one higher than the file count, for the manifest. Rebuild and upload whenever the documentation changes; ingest skips the files that did not.
+
 ### Protect the main branch
 
 **By hand, in GitHub.** Open a first pull request so the `staging-pr-validate` check runs once; GitHub offers only checks it has seen. Then add a branch protection rule for `main` under Settings, then Branches:
@@ -426,6 +445,14 @@ The script creates test Pods, a temporary namespace and the `staging-debug` serv
 ```bash
 kubectl --context "$CONTEXT" -n argocd patch applications.argoproj.io $ENVIRONMENT-platform --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
 kubectl --context "$CONTEXT" -n argocd patch applications.argoproj.io $APP --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
+```
+
+In an inference session, also delete pgvector and its disk. Deleting the cluster does not delete a dynamically provisioned disk, but deleting the Application deletes the StatefulSet, and the StatefulSet's retention policy deletes its disk. Stop the session profile first, so it does not recreate the Application, then wait until no claim is left:
+
+```bash
+kubectl --context "$CONTEXT" -n argocd patch applications.argoproj.io $ENVIRONMENT-profile --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
+kubectl --context "$CONTEXT" -n argocd delete applications.argoproj.io $ENVIRONMENT-pgvector --wait=true
+kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference wait --for=delete pvc --all --timeout=300s
 ```
 
 **2. Delete the HTTPRoute and Gateway, and wait for GKE to remove the load balancer.** The loop waits until the project has no forwarding rules, target HTTPS proxies, URL maps, backend services, health checks, or network endpoint groups, so use it in a project that hosts only this platform. GKE creates a network endpoint group for the Service behind the Gateway; one left behind blocks the network's deletion later:
@@ -731,6 +758,22 @@ Expect every Application `Synced` and `Healthy`, ready API Pods, and the HPA bet
 ```bash
 kubectl --context "$CONTEXT" -n argocd get applications.argoproj.io $APP -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}'
 ```
+
+### Back up and restore the vector database
+
+The database holds nothing ingest cannot rebuild from the corpus in minutes, and every session starts with an empty one. A backup still lets you keep a session's conversations, or restore without a rerun. Export the `rag` schema as `ingest`, its owner:
+
+```bash
+kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference exec $ENVIRONMENT-pgvector-0 -- sh -c 'PGPASSWORD=$(cat /run/pgvector-secrets/ingest) pg_dump -h 127.0.0.1 -U ingest -d rag -n rag -Fc' > rag.dump
+```
+
+Restore into a freshly initialized pgvector as the superuser, from inside its Pod, so the restored tables keep their owner and `rag_api` keeps exactly its grants. `ingest` cannot do this, because recreating the schema needs a right on the database that only the superuser has:
+
+```bash
+kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference exec -i $ENVIRONMENT-pgvector-0 -- pg_restore -U postgres -d rag --clean --if-exists < rag.dump
+```
+
+Then compare the document and chunk counts with the source. The dump contains the corpus and any conversations, so keep it private and delete it when you are done.
 
 ### Rotate a secret
 

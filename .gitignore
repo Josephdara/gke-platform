@@ -15,3 +15,5 @@ crash.*.log
 /inference-plan.pdf
 .DS_Store
 
+/corpus/build/
+/apps/.local/

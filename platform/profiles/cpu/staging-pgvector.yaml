@@ -1,0 +1,30 @@
+# The vector database for the assistant. Session-scoped like the chat model: a session ends by
+# deleting this Application, which deletes the StatefulSet and its disk before teardown.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: staging-pgvector
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: staging-inference
+  source:
+    repoURL: https://github.com/Josephdara/gke-platform.git
+    targetRevision: main
+    path: platform/services/pgvector
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging-inference
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

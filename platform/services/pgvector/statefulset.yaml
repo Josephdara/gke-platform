@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: staging-pgvector
+  namespace: staging-inference
+  labels:
+    app.kubernetes.io/name: pgvector
+    app.kubernetes.io/instance: staging-pgvector
+    project: gke-build-proj
+    environment: staging
+    service: pgvector
+    owner: jd
+spec:
+  serviceName: staging-pgvector
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pgvector
+      app.kubernetes.io/instance: staging-pgvector
+  # Deleting the StatefulSet deletes its disk too. A cluster deletion does not, so a session
+  # ends by removing this Application first; ingest rebuilds the data in each session.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pgvector
+        app.kubernetes.io/instance: staging-pgvector
+        project: gke-build-proj
+        environment: staging
+        service: pgvector
+        owner: jd
+    spec:
+      serviceAccountName: staging-pgvector
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      # The image's postgres user, so the entrypoint runs without root.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: pgvector
+          image: "us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/pgvector/pgvector@sha256:b513c48566e4777cd3370451400000c78eda6a08131d68f4c31d4a76f27bd8fd"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_DB
+              value: rag
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD_FILE
+              value: /run/pgvector-secrets/admin
+            - name: PGVECTOR_SECRETS_DIR
+              value: /run/pgvector-secrets
+            # A subdirectory, because the disk's root holds lost+found.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "rag"]
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "rag"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "rag"]
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: secrets
+              mountPath: /run/pgvector-secrets
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: run
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: init
+          configMap:
+            name: staging-pgvector-init
+            # Executable, so the entrypoint runs it in its own shell instead of sourcing it.
+            defaultMode: 0555
+        - name: secrets
+          csi:
+            driver: secrets-store-gke.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: staging-pgvector
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: pgvector
+          app.kubernetes.io/instance: staging-pgvector
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: standard-rwo
+        resources:
+          requests:
+            storage: 10Gi

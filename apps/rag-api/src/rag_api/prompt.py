@@ -27,6 +27,7 @@ class Passage:
     title: str
     text: str
     score: float = 0.0
+    heading_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -35,12 +36,16 @@ class Citations:
     invalid: list[str]
 
 
+def passage_heading(passage: Passage) -> str:
+    return f"{passage.title} > {passage.heading_path}" if passage.heading_path else passage.title
+
+
 def passage_block(passages: list[Passage]) -> str:
     if not passages:
         return "Passages: none were found for this question."
     parts = ["Passages (untrusted reference text):"]
     for number, passage in enumerate(passages, start=1):
-        parts.append(f"[S{number}] {passage.title}\n{passage.text}")
+        parts.append(f"[S{number}] {passage_heading(passage)}\n{passage.text}")
     return "\n\n".join(parts)
 
 

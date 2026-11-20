@@ -86,3 +86,63 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+---
+# The vector database accepts only rag-api, which reads the corpus, and ingest, which loads it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: staging-inference-pgvector-ingress
+  namespace: staging-inference
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  podSelector:
+    matchLabels:
+      service: pgvector
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: staging
+          podSelector:
+            matchLabels:
+              service: rag-api
+        - podSelector:
+            matchLabels:
+              service: ingest
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# ingest embeds chunks through embeddings and loads them into pgvector. Its Google API egress
+# for the corpus and the run report is in staging-inference-allow-google-apis.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: staging-inference-ingest-egress
+  namespace: staging-inference
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  podSelector:
+    matchLabels:
+      service: ingest
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              service: embeddings
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              service: pgvector
+      ports:
+        - protocol: TCP
+          port: 5432

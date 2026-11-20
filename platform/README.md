@@ -11,7 +11,8 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | [`charts/model-server/`](charts/model-server/) | Helm chart that deploys one model server; see [Model-server chart](#model-server-chart) |
 | [`services/platform-verification-api/`](services/platform-verification-api/) | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml`    |
 | [`services/llm-cpu/`](services/llm-cpu/), [`services/embeddings/`](services/embeddings/) | Model-server chart values for the chat model and the embedding model: `values.yaml` plus `values-staging.yaml` |
-| [`profiles/`](profiles/) | One folder per session profile. The `staging-profile` root Application syncs the active one; `cpu/` holds the llm-cpu Application |
+| [`profiles/`](profiles/) | One folder per session profile. The `staging-profile` root Application syncs the active one; `cpu/` holds the llm-cpu and pgvector Applications |
+| [`services/pgvector/`](services/pgvector/) | The vector database: a Kustomize directory with a one-replica StatefulSet, its 10 GiB disk, a headless Service, its passwords from Secret Manager, and the init script that creates the `ingest` and `rag_api` roles; see [Vector database](#vector-database) |
 | [`namespaces/`](namespaces/)                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                |
 | [`tests/`](tests/)                                                           | Chart validation, live-check and inference-check scripts; each chart's fixtures live in its own `tests/fixtures/`, and the policy fixtures in `tests/policies/` |
 | [`argocd/`](argocd/)                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
@@ -313,6 +314,20 @@ docker stop local-registry
 
 
 
+## Vector database
+
+[`services/pgvector/`](services/pgvector/) runs PostgreSQL 17 with pgvector from the mirror repository, in `staging-inference`, as the `staging-pgvector` Application in the CPU session profile.
+
+| Behavior | Reason |
+| --- | --- |
+| One replica, as the image's `postgres` user (UID 999), with a read-only root filesystem and emptyDir volumes for the socket and `/tmp` | Passes every admission policy, which the policy fixtures check against this exact StatefulSet |
+| A 10 GiB pd-balanced claim, deleted with the StatefulSet | Deleting the cluster leaves dynamic disks behind, so a session ends by deleting this Application; ingest rebuilds the data in each session |
+| Three passwords mounted from Secret Manager; the superuser's is read only here | The init script, run once when the database is first initialized, creates the `ingest` role, which owns the `rag` schema, and the `rag_api` role, which reads the corpus and writes only conversations |
+| A headless Service on 5432, with ingress only from `staging/rag-api` and `staging-inference/ingest` | No route outside the cluster |
+| The init script in its own file, turned into a ConfigMap by Kustomize and mounted executable | The local Compose stack mounts the same file, so both run the same script |
+
+To back up or restore it, see the [runbook](../RUNBOOK.md#back-up-and-restore-the-vector-database).
+
 ## Model-server chart
 
 [`charts/model-server/`](charts/model-server/) deploys one model server into `<environment>-inference`: llama.cpp for the chat model, or Text Embeddings Inference (TEI) for the embedding model. It is separate from the service chart, because a model server needs a model download, a long startup, inference limits, and a rollout that never asks for a second node. Version 0.1.1 includes the fixes from its first run in the staging cluster; see the [evidence report](evidence/2026-11-19-inference-foundation.md).
@@ -348,7 +363,7 @@ What it checks:
 | #   | Check           | Passes when                                                                                                                                                                         |
 | --- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | App tests       | The pytest suite in `apps/platform-verification-api/` passes                                                                                                                        |
-| 2   | Valid renders   | The API's staging and local values, and the llm-cpu and embeddings values with the model-server chart, render and pass kubeconform in strict mode, so unknown or misspelled fields fail |
+| 2   | Valid renders   | The API's staging and local values, and the llm-cpu and embeddings values with the model-server chart, render and pass kubeconform in strict mode, so unknown or misspelled fields fail. The plain pgvector manifests pass the same check |
 | 3   | Invalid inputs  | Every file in each chart's `tests/fixtures/invalid/`, layered on a valid configuration, fails to render with the text on its first line. A failure names the fixture |
 | 4   | Wrong namespace | Rendering the service chart into `default` is refused                                                                                                                              |
 | 5   | Model values    | Each model server's values name the same revision, bucket path, and files (path, size, SHA-256) as its manifest in `models/` |
@@ -368,7 +383,7 @@ To add an invalid fixture, create a small values file in the chart's `tests/fixt
 A passing run ends with:
 
 ```text
-10 passed, 0 failed
+11 passed, 0 failed
 ```
 
 Pull request CI runs the same script with `SKIP_APP_TESTS=1`, because the pipeline's `test` step already runs the application tests; see the [pipeline README](../pipeline/README.md#what-a-build-does).

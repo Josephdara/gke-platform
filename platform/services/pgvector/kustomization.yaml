@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: staging-inference
+resources:
+  - serviceaccount.yaml
+  - secretproviderclass.yaml
+  - service.yaml
+  - statefulset.yaml
+configMapGenerator:
+  - name: staging-pgvector-init
+    files:
+      - init/10-roles.sh
+    options:
+      # A stable name, so the StatefulSet and the policy fixture refer to it as written.
+      disableNameSuffixHash: true
+      labels:
+        app.kubernetes.io/name: pgvector
+        app.kubernetes.io/instance: staging-pgvector
+        project: gke-build-proj
+        environment: staging
+        service: pgvector
+        owner: jd

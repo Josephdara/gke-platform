@@ -17,6 +17,7 @@ from .metrics import (
     RAG_REQUESTS, RAG_RETRIEVAL, RAG_TTFT,
 )
 from .prompt import PROMPT_VERSION, check_citations
+from .retrieval import RetrievalUnavailable
 
 router = APIRouter()
 
@@ -78,6 +79,10 @@ async def chat(request: Request, body: ChatRequest):
     except BudgetExceeded:
         state.admission.release()
         return refuse("input_too_long", 422, "question_too_long")
+    except RetrievalUnavailable:
+        state.admission.release()
+        RAG_REQUESTS.labels("retrieval_unavailable").inc()
+        return JSONResponse({"detail": "retrieval_unavailable"}, status_code=503)
     except UpstreamError as exc:
         state.admission.release()
         outcome = "model_unavailable" if isinstance(exc, ModelUnavailable) else "upstream_failed"
@@ -135,7 +140,8 @@ async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: f
             "promptVersion": PROMPT_VERSION,
             "model": backend.model_info().get("alias"),
             "sources": [
-                {"label": f"S{n}", "chunkId": p.chunk_id, "title": p.title}
+                {"label": f"S{n}", "chunkId": p.chunk_id, "title": p.title, "headingPath": p.heading_path,
+                 "score": round(p.score, 4)}
                 for n, p in enumerate(fitted.passages, start=1)
             ],
         })

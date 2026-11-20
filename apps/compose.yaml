@@ -1,0 +1,115 @@
+# The data path on one machine: pgvector and Text Embeddings Inference from their pinned digests,
+# with the cluster's users and read-only filesystems, plus ingest built from source. The chat
+# model is optional (profile "chat"); rag-api runs from source against the stack.
+# Usage: see the ingest README. Run from the repository root.
+name: gke-platform-local
+
+secrets:
+  pgvector-admin:
+    file: .local/pgvector/admin
+  pgvector-ingest:
+    file: .local/pgvector/ingest
+  pgvector-rag-api:
+    file: .local/pgvector/rag-api
+
+services:
+  pgvector:
+    image: docker.io/pgvector/pgvector@sha256:b513c48566e4777cd3370451400000c78eda6a08131d68f4c31d4a76f27bd8fd
+    user: "999:999"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      POSTGRES_DB: rag
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/pgvector-admin
+      PGVECTOR_SECRETS_DIR: /run/pgvector-secrets
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets:
+      - source: pgvector-admin
+      - source: pgvector-ingest
+        target: /run/pgvector-secrets/ingest
+      - source: pgvector-rag-api
+        target: /run/pgvector-secrets/rag-api
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../platform/services/pgvector/init:/docker-entrypoint-initdb.d:ro
+    tmpfs:
+      - /var/run/postgresql:uid=999,gid=999
+      - /tmp:uid=999,gid=999
+    ports:
+      - 127.0.0.1:15432:5432
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "/var/run/postgresql", "-U", "postgres", "-d", "rag"]
+      interval: 5s
+      retries: 30
+
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference@sha256:2538ea1c9640d3763b15af668039d24172d063b42337b0c27796fc2be180c78d
+    platform: linux/amd64
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["--model-id", "/models", "--hostname", "0.0.0.0", "--port", "8080", "--json-output"]
+    environment:
+      HOME: /tmp
+      HUGGINGFACE_HUB_CACHE: /tmp/hf
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ${MODEL_CACHE:-${HOME}/.cache/gke-platform-models}/bge-small-en-v1.5/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a:/models:ro
+    tmpfs:
+      - /tmp:uid=10001,gid=10001
+    ports:
+      - 127.0.0.1:18090:8080
+
+  ingest:
+    build: ./ingest
+    profiles: [ingest]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      pgvector:
+        condition: service_healthy
+      embeddings:
+        condition: service_started
+    environment:
+      ENVIRONMENT: local
+      RELEASE_VERSION: dev
+      CORPUS_SOURCE: /corpus
+      EMBEDDINGS_URL: http://embeddings:8080
+      DATABASE_HOST: pgvector
+      DATABASE_PASSWORD_FILE: /run/secrets/pgvector-ingest
+    secrets:
+      - pgvector-ingest
+    volumes:
+      # The snapshot to load, corpus/build/<revision>, set with CORPUS_DIR. Without it, the run
+      # stops because the bind source does not exist.
+      - type: bind
+        source: ${CORPUS_DIR:-../corpus/build/CORPUS_DIR-not-set}
+        target: /corpus
+        read_only: true
+        bind:
+          create_host_path: false
+
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp@sha256:5b43086e3ba7ea5794d72904654f6cd41224a9b1c6ac0398f4940ee380d30f23
+    profiles: [chat]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["--model", "/models/qwen2.5-1.5b-instruct-q4_k_m.gguf", "--host", "0.0.0.0", "--port", "8080",
+              "--alias", "assistant-chat", "--ctx-size", "8192", "--parallel", "2", "--n-predict", "384",
+              "--threads", "3", "--metrics", "--no-slots", "--no-webui"]
+    volumes:
+      - ${MODEL_CACHE:-${HOME}/.cache/gke-platform-models}/qwen2.5-1.5b-instruct-q4-k-m/91cad51170dc346986eccefdc2dd33a9da36ead9:/models:ro
+    tmpfs:
+      - /tmp:uid=10001,gid=10001
+    ports:
+      - 127.0.0.1:18080:8080
+
+volumes:
+  pgdata:
