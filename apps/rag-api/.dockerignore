@@ -3,3 +3,9 @@
 !src/
 !src/rag_api/
 !src/rag_api/*.py
+!frontend/
+frontend/node_modules
+frontend/.cache
+frontend/dist
+frontend/test-results
+frontend/playwright-report

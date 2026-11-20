@@ -53,7 +53,7 @@ The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a runn
 | Path | Contents |
 | --- | --- |
 | [`apps/platform-verification-api/`](apps/platform-verification-api/) | FastAPI service I use to verify deployment, health, configuration, logging, and metrics. See its [README](apps/platform-verification-api/README.md) |
-| [`apps/rag-api/`](apps/rag-api/) | FastAPI service for the assistant: grounded prompts, streamed answers, citation checks, and admission limits. See its [README](apps/rag-api/README.md) |
+| [`apps/rag-api/`](apps/rag-api/) | FastAPI service for the assistant: sign-in, grounded prompts, streamed answers, citation checks, admission limits, conversations, and the web interface. See its [README](apps/rag-api/README.md) |
 | [`apps/ingest/`](apps/ingest/) | Batch job that loads the corpus into pgvector. See its [README](apps/ingest/README.md) |
 | [`corpus/`](corpus/) | The assistant's corpus: its sources, two synthetic test documents, and the scripts that build and upload a snapshot. See its [README](corpus/README.md) |
 | [`platform/charts/service/`](platform/charts/service/) | Shared Helm chart that deploys one HTTP service |

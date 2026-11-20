@@ -14,6 +14,11 @@ class Settings:
     environment: str
     release_version: str
     model_url: str
+    # Sign-in: the users file with scrypt hashes, and the key that signs session cookies.
+    users_file: str
+    session_key_file: str
+    # The site's own origin. State-changing requests must send exactly this Origin.
+    allowed_origin: str
     service_name: str = "rag-api"
     port: int = 8080
     metrics_port: int = 9090
@@ -45,6 +50,15 @@ class Settings:
     embedding_model: str = "bge-small-en-v1.5"
     embedding_revision: str = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
     embedding_dimensions: int = 384
+    # Secure cookies need HTTPS; only a local http:// run turns this off.
+    cookie_secure: bool = True
+    session_hours: int = 8
+    login_attempts_per_minute: int = 5
+    # X-Forwarded-For entries the load balancer appends: 2 behind GKE's external Application
+    # Load Balancer, 0 when nothing sits in front.
+    forwarded_hops: int = 0
+    # The built frontend. Unset, rag-api serves the API only.
+    static_dir: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "Settings":
@@ -84,6 +98,16 @@ class Settings:
             embeddings_url = text("EMBEDDINGS_URL").rstrip("/")
             if not embeddings_url.startswith(("http://", "https://")) or " " in embeddings_url:
                 raise ConfigurationError("EMBEDDINGS_URL must be an http:// or https:// URL")
+        allowed_origin = text("ALLOWED_ORIGIN").rstrip("/")
+        scheme, _, rest = allowed_origin.partition("://")
+        if scheme not in ("http", "https") or not rest or "/" in rest or " " in rest:
+            raise ConfigurationError("ALLOWED_ORIGIN must be a scheme and host, such as https://assistant.example.com")
+        secure = text("COOKIE_SECURE", "true").lower()
+        if secure not in ("true", "false"):
+            raise ConfigurationError("COOKIE_SECURE must be true or false")
+        if secure == "true" and scheme != "https":
+            raise ConfigurationError("COOKIE_SECURE=true needs an https ALLOWED_ORIGIN")
+
         floor_text = text("SIMILARITY_FLOOR", "0")
         try:
             similarity_floor = float(floor_text)
@@ -96,6 +120,14 @@ class Settings:
             environment=text("ENVIRONMENT"),
             release_version=text("RELEASE_VERSION"),
             model_url=model_url,
+            users_file=text("USERS_FILE"),
+            session_key_file=text("SESSION_KEY_FILE"),
+            allowed_origin=allowed_origin,
+            cookie_secure=secure == "true",
+            session_hours=integer("SESSION_HOURS", 8, 1, 24),
+            login_attempts_per_minute=integer("LOGIN_ATTEMPTS_PER_MINUTE", 5, 1, 100),
+            forwarded_hops=integer("FORWARDED_HOPS", 0, 0, 5),
+            static_dir=None if values.get("STATIC_DIR") is None else text("STATIC_DIR"),
             service_name=text("SERVICE_NAME", "rag-api"),
             port=app_port,
             metrics_port=metrics_port,

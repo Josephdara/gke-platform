@@ -1,7 +1,9 @@
+# Publishes one application's image. Each application has its own trigger, which sets _APP to its
+# directory under apps/ and _IMAGE to its repository path.
 steps:
   - id: test
     name: python:3.14.10-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b
-    dir: apps/platform-verification-api
+    dir: apps/${_APP}
     entrypoint: bash
     args:
       - -c
@@ -14,7 +16,7 @@ steps:
 
   - id: build
     name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
-    args: [build, --platform, linux/amd64, -t, "${_IMAGE}:sha-${SHORT_SHA}", apps/platform-verification-api]
+    args: [build, --platform, linux/amd64, -t, "${_IMAGE}:sha-${SHORT_SHA}", "apps/${_APP}"]
 
   - id: export
     name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
@@ -29,7 +31,7 @@ steps:
       - --scanners=vuln,secret
       - --severity=MEDIUM,HIGH,CRITICAL
       - --ignore-unfixed
-      - --ignorefile=apps/platform-verification-api/.trivyignore.yaml
+      - --ignorefile=apps/${_APP}/.trivyignore.yaml
       - --exit-code=1
 
   - id: report
@@ -39,7 +41,7 @@ steps:
       - --input=/workspace/image.tar
       - --cache-dir=/workspace/.trivy
       - --scanners=vuln,secret
-      - --ignorefile=apps/platform-verification-api/.trivyignore.yaml
+      - --ignorefile=apps/${_APP}/.trivyignore.yaml
       - --show-suppressed
       - --format=json
       - --output=/workspace/scan.json
@@ -61,7 +63,7 @@ steps:
       - cp
       - /workspace/scan.json
       - /workspace/sbom.cdx.json
-      - gs://${_EVIDENCE_BUCKET}/platform-verification-api/${COMMIT_SHA}/
+      - gs://${_EVIDENCE_BUCKET}/${_APP}/${COMMIT_SHA}/
 
 images:
   - "${_IMAGE}:sha-${SHORT_SHA}"

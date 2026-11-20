@@ -1,6 +1,7 @@
-from fastapi.testclient import TestClient
 
 from rag_api.limits import AdmissionLimiter, RateLimiter
+
+from conftest import signed_in
 
 
 def test_admission_refuses_beyond_the_limit_and_frees_on_release():
@@ -14,7 +15,7 @@ def test_a_full_replica_answers_429_with_retry_after(make_app, model):
     app = make_app(model)
     for _ in range(3):
         assert app.state.admission.try_acquire()
-    with TestClient(app) as client:
+    with signed_in(app) as client:
         response = client.post("/api/chat", json={"question": "Why?"})
     assert response.status_code == 429
     assert response.headers["retry-after"] == "10"
@@ -35,7 +36,7 @@ def test_rate_limit_window_slides():
 
 def test_rate_limited_caller_gets_429(make_app, model):
     app = make_app(model, rate_limit_per_minute=1)
-    with TestClient(app) as client:
+    with signed_in(app) as client:
         assert client.post("/api/chat", json={"question": "Why?"}).status_code == 200
         response = client.post("/api/chat", json={"question": "Why?"})
     assert response.status_code == 429
@@ -44,7 +45,7 @@ def test_rate_limited_caller_gets_429(make_app, model):
 
 def test_input_bounds(make_app, model):
     app = make_app(model)
-    with TestClient(app) as client:
+    with signed_in(app) as client:
         assert client.post("/api/chat", json={"question": "x" * 2001}).status_code == 422
         assert client.post("/api/chat", json={"question": "   "}).status_code == 422
         # A client cannot choose its own output length.

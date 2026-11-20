@@ -258,6 +258,15 @@ for name in pgvector-admin pgvector-ingest pgvector-rag-api; do python3 -c 'impo
 
 pgvector creates the `ingest` and `rag_api` roles from these when its database is first initialized, which happens in every session. A new version therefore takes effect in the next session.
 
+Then create rag-api's accounts and session key. [`make_users.py`](apps/rag-api/tools/make_users.py) prompts for each username and password, hashes the password with scrypt, and prints only the hashes, so the passwords never reach Secret Manager or your shell history. Add a second account for the load generator and answer `y` when it asks about the rate limit:
+
+```bash
+apps/rag-api/tools/make_users.py | gcloud secrets versions add "$ENVIRONMENT-rag-api-users" --project="$PROJECT_ID" --data-file=-
+python3 -c 'import secrets; print(secrets.token_urlsafe(48), end="")' | gcloud secrets versions add "$ENVIRONMENT-rag-api-session-key" --project="$PROJECT_ID" --data-file=-
+```
+
+A new session-key version signs everyone out when rag-api next restarts.
+
 ### Delegate DNS to Cloud DNS
 
 **By hand, at your DNS host.** Terraform created the zone for your subdomain in Cloud DNS, with DNSSEC on, and the certificate's authorization record inside it. The parent domain must point to the zone.
@@ -601,7 +610,7 @@ Cloud Build runs the pipeline defined in `pipeline/`. The [pipeline README](pipe
 | Trigger | Runs when | Runs as |
 | --- | --- | --- |
 | `staging-pr-validate` | A pull request targets `main`. Pull requests from people outside the repository wait until you comment `/gcbrun` | `staging-build-validate-sa`, which can write build logs only |
-| `staging-main-publish` | A merge to `main` changes `apps/platform-verification-api/`, other than its Markdown files, or `pipeline/cloudbuild-publish.yaml` | `staging-build-publish-sa`, which can push to the image repository and create objects in the evidence bucket |
+| `staging-main-publish`, `staging-rag-api-publish`, `staging-ingest-publish` | A merge to `main` changes that application's folder under `apps/`, other than its Markdown files, or `pipeline/cloudbuild-publish.yaml`. Each publishes `<image repository>/<application>:sha-<commit>` | `staging-build-publish-sa`, which can push to the image repository and create objects in the evidence bucket |
 
 | Step | Validate | Publish | What it does |
 | --- | --- | --- | --- |

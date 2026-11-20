@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from prometheus_client import start_http_server
 
 from .app import create_app
+from .auth import AuthConfigError
 from .config import ConfigurationError, Settings
 from .logging import server_log_config
 
@@ -31,11 +32,12 @@ def build_server(app: FastAPI, settings: Settings) -> uvicorn.Server:
 def main() -> None:
     try:
         settings = Settings.from_env()
-    except ConfigurationError as exc:
+        app = create_app(settings)
+    except (ConfigurationError, AuthConfigError) as exc:
         print(json.dumps({"severity": "ERROR", "event": "configuration_error", "message": str(exc)}), file=sys.stderr)
         raise SystemExit(2) from None
 
-    server = build_server(create_app(settings), settings)
+    server = build_server(app, settings)
     start_http_server(settings.metrics_port)
     try:
         server.run()

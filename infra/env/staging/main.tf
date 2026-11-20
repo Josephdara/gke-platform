@@ -58,6 +58,13 @@ module "secrets" {
       { namespace = "${var.environment}-inference", service = "pgvector" },
       { namespace = "${var.environment}-inference", service = "ingest" }
     ]
+    # rag-api's accounts, as scrypt hashes, and the key that signs its session cookies.
+    rag-api-users = [
+      { namespace = var.environment, service = "rag-api" }
+    ]
+    rag-api-session-key = [
+      { namespace = var.environment, service = "rag-api" }
+    ]
     # rag-api reads the corpus and writes only its own conversations.
     pgvector-rag-api = [
       { namespace = "${var.environment}-inference", service = "pgvector" },
@@ -155,8 +162,9 @@ module "pipeline" {
   publish_service_account_id  = module.identity.ci_build_publish_id
   images_repository_id        = module.foundation.images_repository_id
   labels                      = { component = "pipeline" }
+  publish_apps                = ["platform-verification-api", "rag-api", "ingest"]
   # Build evidence under these prefixes expires after 90 days; inference evidence is kept.
-  evidence_expiring_prefixes = ["platform-verification-api/"]
+  evidence_expiring_prefixes = ["platform-verification-api/", "rag-api/", "ingest/"]
 }
 
 resource "google_storage_bucket_iam_member" "ci_write_evidence" {

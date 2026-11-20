@@ -32,4 +32,5 @@ PY
 
 gcloud storage cp --recursive "$DIR/*" "$TARGET" --project="$PROJECT_ID"
 echo "Uploaded corpus $revision to $TARGET"
-gcloud storage ls --recursive "$TARGET" --project="$PROJECT_ID" | grep -c -v '/$' | xargs echo "Objects:"
+# A ** listing returns objects only; a recursive listing also prints a header per folder.
+gcloud storage ls "${TARGET}**" --project="$PROJECT_ID" | wc -l | xargs echo "Objects:"

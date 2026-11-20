@@ -2,7 +2,8 @@ import pytest
 
 from rag_api.config import ConfigurationError, Settings
 
-BASE = {"ENVIRONMENT": "test", "RELEASE_VERSION": "release-123", "MODEL_URL": "http://staging-llm-cpu:8080/"}
+BASE = {"ENVIRONMENT": "test", "RELEASE_VERSION": "release-123", "MODEL_URL": "http://staging-llm-cpu:8080/",
+        "USERS_FILE": "/run/users", "SESSION_KEY_FILE": "/run/key", "ALLOWED_ORIGIN": "https://assistant.example.com"}
 
 
 def test_defaults():

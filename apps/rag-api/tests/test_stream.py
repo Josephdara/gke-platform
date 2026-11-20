@@ -1,8 +1,7 @@
-from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
 import pytest
 
-from conftest import parse_events, terminal_events
+from conftest import parse_events, signed_in, terminal_events
 from fake_model import FakeModelServer
 
 
@@ -11,7 +10,7 @@ def sample(name, **labels):
 
 
 def ask(app, question="Why do Pods restart?"):
-    with TestClient(app) as client:
+    with signed_in(app) as client:
         response = client.post("/api/chat", json={"question": question})
         return response, app.state.admission.active
 

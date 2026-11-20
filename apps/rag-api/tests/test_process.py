@@ -12,6 +12,8 @@ import time
 import httpx
 import pytest
 
+from conftest import AUTH_ENV, HEADERS, PASSWORDS
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -20,6 +22,7 @@ def environment():
         **os.environ,
         "PYTHONPATH": f"{ROOT / 'src'}{os.pathsep}{ROOT / 'tests'}",
         "ENVIRONMENT": "test", "RELEASE_VERSION": "process-test", "MODEL_URL": "http://model", "LOG_LEVEL": "INFO",
+        **AUTH_ENV,
     }
 
 
@@ -63,7 +66,9 @@ def test_sigterm_lets_an_active_stream_finish(tmp_path):
                 first_token = threading.Event()
 
                 def stream():
-                    with httpx.Client(base_url=f"http://127.0.0.1:{port}", trust_env=False, timeout=10) as client:
+                    with httpx.Client(base_url=f"http://127.0.0.1:{port}", trust_env=False, timeout=10, headers=HEADERS) as client:
+                        signed = client.post("/api/session", json={"username": "tester", "password": PASSWORDS["tester"]})
+                        assert signed.status_code == 204
                         with client.stream("POST", "/api/chat", json={"question": "Why?"}) as response:
                             for line in response.iter_lines():
                                 body.append(line)

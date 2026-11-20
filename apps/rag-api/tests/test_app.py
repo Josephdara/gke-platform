@@ -2,6 +2,7 @@ import json
 
 from fastapi.testclient import TestClient
 
+from conftest import signed_in
 from fake_model import FakeModelServer
 
 
@@ -19,7 +20,7 @@ def test_health_and_readiness(make_app, model):
 
 
 def test_readiness_does_not_depend_on_the_model(make_app):
-    with TestClient(make_app(FakeModelServer(healthy=False))) as client:
+    with signed_in(make_app(FakeModelServer(healthy=False))) as client:
         assert client.get("/readyz").status_code == 200
         status = client.get("/api/status").json()
     assert status["model"] == {"runtime": "llamacpp", "alias": "assistant-chat", "status": "unavailable"}
@@ -29,7 +30,7 @@ def test_readiness_does_not_depend_on_the_model(make_app):
 
 
 def test_chat_is_logged_without_question_or_answer_text(make_app, model, log_stream):
-    with TestClient(make_app(model)) as client:
+    with signed_in(make_app(model)) as client:
         response = client.post("/api/chat", json={"question": "private-question-text"})
     entry, = [r for r in records(log_stream) if r["event"] == "chat_completed"]
     assert entry.items() >= {

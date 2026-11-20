@@ -1,6 +1,7 @@
-# The data path on one machine: pgvector and Text Embeddings Inference from their pinned digests,
-# with the cluster's users and read-only filesystems, plus ingest built from source. The chat
-# model is optional (profile "chat"); rag-api runs from source against the stack.
+# The assistant on one machine: pgvector, Text Embeddings Inference, and the chat model from their
+# pinned digests, with the cluster's users and read-only filesystems, plus ingest and rag-api
+# built from source. Profiles: "ingest" loads the corpus, "chat" adds the model, and "app" adds
+# rag-api with the frontend at http://127.0.0.1:8080.
 # Usage: see the ingest README. Run from the repository root.
 name: gke-platform-local
 
@@ -11,6 +12,10 @@ secrets:
     file: .local/pgvector/ingest
   pgvector-rag-api:
     file: .local/pgvector/rag-api
+  rag-api-users:
+    file: .local/rag-api/users.json
+  rag-api-session-key:
+    file: .local/rag-api/session-key
 
 services:
   pgvector:
@@ -110,6 +115,39 @@ services:
       - /tmp:uid=10001,gid=10001
     ports:
       - 127.0.0.1:18080:8080
+
+  rag-api:
+    build: ./rag-api
+    profiles: [app]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      pgvector:
+        condition: service_healthy
+      embeddings:
+        condition: service_started
+    environment:
+      ENVIRONMENT: local
+      RELEASE_VERSION: dev
+      MODEL_URL: http://llm:8080
+      EMBEDDINGS_URL: http://embeddings:8080
+      DATABASE_HOST: pgvector
+      DATABASE_PASSWORD_FILE: /run/secrets/pgvector-rag-api
+      USERS_FILE: /run/secrets/rag-api-users
+      SESSION_KEY_FILE: /run/secrets/rag-api-session-key
+      # The page's own origin. Open it as 127.0.0.1, not localhost, or sign-in is refused.
+      ALLOWED_ORIGIN: http://127.0.0.1:8080
+      COOKIE_SECURE: "false"
+    secrets:
+      - pgvector-rag-api
+      - rag-api-users
+      - rag-api-session-key
+    tmpfs:
+      - /tmp:uid=10001,gid=10001
+    ports:
+      - 127.0.0.1:8080:8080
 
 volumes:
   pgdata:
