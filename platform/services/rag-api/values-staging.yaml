@@ -1,0 +1,31 @@
+# Staging overrides, layered after values.yaml.
+environment: staging
+
+image:
+  repository: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/rag-api
+  digest: "sha256:d963ca08e7b9c32787570c01ff37fd4641db1f1e842bdf3d0ee85e1d9e2c016c"
+releaseVersion: "sha-aaa0a4c"
+
+config:
+  MODEL_URL: http://staging-llm-cpu.staging-inference.svc.cluster.local:8080
+  EMBEDDINGS_URL: http://staging-embeddings.staging-inference.svc.cluster.local:8080
+  DATABASE_HOST: staging-pgvector.staging-inference.svc.cluster.local
+  ALLOWED_ORIGIN: https://assistant.staging.gke.josephdara.com
+  # GKE's external Application Load Balancer appends the client and its own address.
+  FORWARDED_HOPS: "2"
+
+secrets:
+  - name: staging-rag-api-users
+    env: USERS_FILE
+  - name: staging-rag-api-session-key
+    env: SESSION_KEY_FILE
+  - name: staging-pgvector-rag-api
+    env: DATABASE_PASSWORD_FILE
+
+httpRoute:
+  hostname: assistant.staging.gke.josephdara.com
+
+# Streamed answers need longer than the load balancer's default 30 seconds.
+backendPolicy:
+  timeoutSeconds: 180
+  drainingSeconds: 150

@@ -65,7 +65,8 @@ revision=$(k -n argocd get applications.argoproj.io staging-platform-verificatio
   -o jsonpath='{.status.sync.revision}')
 git fetch --quiet origin main || true
 expected=$(git show "$revision:$VALUES" 2>/dev/null | sed -n 's/^ *digest: "\(sha256:[0-9a-f]*\)".*/\1/p' || true)
-running=$(k -n staging get pods \
+# Only the API's own Pods: other services in staging, such as rag-api, run other images.
+running=$(k -n staging get pods -l app.kubernetes.io/instance=staging-platform-verification-api \
   -o go-template='{{range .items}}{{if not .metadata.deletionTimestamp}}{{(index .status.containerStatuses 0).imageID}}{{"\n"}}{{end}}{{end}}' \
   | sed -n 's/.*@\(sha256:[0-9a-f]*\)$/\1/p' | sort -u)
 

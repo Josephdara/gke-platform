@@ -6,24 +6,19 @@ storage. The cost of that design: a single session cannot be revoked; rotating t
 signs everyone out.
 """
 
-import base64
 from dataclasses import dataclass
 import hashlib
 import hmac
 import json
-import secrets
 import time
 
 from fastapi import Request
 from starlette.responses import JSONResponse
 
+from .passwords import DUMMY_HASH, b64, hash_password, unb64, verify_password  # noqa: F401
+
 COOKIE = "assistant_session"
 CLIENT_HEADER = "x-assistant-client"
-# scrypt with N=2^15, r=8 uses 32 MiB per check; the sign-in throttle bounds how many run at once.
-SCRYPT = {"n": 2 ** 15, "r": 8, "p": 1}
-SCRYPT_MAXMEM = 64 * 1024 * 1024
-
-
 class AuthConfigError(ValueError):
     """The users file or the session key is missing or malformed."""
 
@@ -33,36 +28,6 @@ class User:
     username: str
     password_hash: str
     rate_limit_exempt: bool = False
-
-
-def b64(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
-
-def unb64(text: str) -> bytes:
-    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
-
-
-def hash_password(password: str) -> str:
-    salt = secrets.token_bytes(16)
-    digest = hashlib.scrypt(password.encode(), salt=salt, maxmem=SCRYPT_MAXMEM, dklen=32, **SCRYPT)
-    return f"scrypt${SCRYPT['n']}${SCRYPT['r']}${SCRYPT['p']}${b64(salt)}${b64(digest)}"
-
-
-def verify_password(password: str, stored: str) -> bool:
-    try:
-        scheme, n, r, p, salt, digest = stored.split("$")
-        if scheme != "scrypt":
-            return False
-        actual = hashlib.scrypt(password.encode(), salt=unb64(salt), n=int(n), r=int(r), p=int(p),
-                                maxmem=SCRYPT_MAXMEM, dklen=len(unb64(digest)))
-    except (ValueError, TypeError):
-        return False
-    return hmac.compare_digest(actual, unb64(digest))
-
-
-# Checked when the username is unknown, so a wrong username takes as long as a wrong password.
-DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
 
 
 def load_users(path: str) -> dict[str, User]:

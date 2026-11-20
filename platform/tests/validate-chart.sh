@@ -15,7 +15,7 @@ VALUES=platform/services/platform-verification-api
 FIXTURES=$CHART/tests/fixtures
 MODEL_CHART=platform/charts/model-server
 MODEL_SERVICES="llm-cpu embeddings"
-MANIFEST_DIRS="platform/services/pgvector"
+MANIFEST_DIRS="platform/services/pgvector platform/services/ingest"
 APP=apps/platform-verification-api
 KUBERNETES_VERSION=1.36.4
 KUBECONFORM_CACHE=${KUBECONFORM_CACHE:-$HOME/.cache/kubeconform}
@@ -61,7 +61,7 @@ check_valid() {
   shift 3
   if ! helm template validate "$chart" --namespace "$namespace" "$@" > "$WORK/$name.yaml" 2> "$WORK/$name.err"; then
     fail "$name: render" "$WORK/$name.err"
-  elif kubeconform -strict -summary -skip SecretProviderClass,HTTPRoute,PodMonitoring -kubernetes-version "$KUBERNETES_VERSION" \
+  elif kubeconform -strict -summary -skip SecretProviderClass,HTTPRoute,PodMonitoring,GCPBackendPolicy,HealthCheckPolicy -kubernetes-version "$KUBERNETES_VERSION" \
       -cache "$KUBECONFORM_CACHE" "$WORK/$name.yaml" > "$WORK/$name.kubeconform" 2>&1; then
     pass "$name: render and schema ($(tail -n 1 "$WORK/$name.kubeconform"))"
   else
@@ -71,6 +71,7 @@ check_valid() {
 
 check_valid staging "$CHART" staging -f "$VALUES/values.yaml" -f "$VALUES/values-staging.yaml"
 check_valid local "$CHART" local -f "$VALUES/values.yaml" -f "$VALUES/values-local.yaml"
+check_valid rag-api "$CHART" staging -f platform/services/rag-api/values.yaml -f platform/services/rag-api/values-staging.yaml
 for service in $MODEL_SERVICES; do
   check_valid "$service" "$MODEL_CHART" staging-inference \
     -f "platform/services/$service/values.yaml" -f "platform/services/$service/values-staging.yaml"

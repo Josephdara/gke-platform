@@ -4,7 +4,17 @@
   "description": "Developer interface for deploying one HTTP service. Security, probe timings, rollout, and Service settings are fixed by the chart.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["project", "environment", "serviceName", "owner", "image", "releaseVersion", "containerPort", "probes", "resources"],
+  "required": [
+    "project",
+    "environment",
+    "serviceName",
+    "owner",
+    "image",
+    "releaseVersion",
+    "containerPort",
+    "probes",
+    "resources"
+  ],
   "properties": {
     "project": {
       "description": "GCP project ID. First part of resource names and the project label.",
@@ -12,7 +22,10 @@
     },
     "environment": {
       "description": "Deployment environment. Second part of resource names and the namespace.",
-      "enum": ["local", "staging"]
+      "enum": [
+        "local",
+        "staging"
+      ]
     },
     "serviceName": {
       "description": "Service name. Last part of resource names, the service (cost) label, and SERVICE_NAME.",
@@ -25,7 +38,10 @@
     "image": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repository", "digest"],
+      "required": [
+        "repository",
+        "digest"
+      ],
       "properties": {
         "repository": {
           "description": "Registry host (optional port) and path, without tag or digest.",
@@ -52,45 +68,79 @@
     "probes": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["liveness", "readiness"],
+      "required": [
+        "liveness",
+        "readiness"
+      ],
       "properties": {
-        "liveness": { "$ref": "#/$defs/probe", "description": "Liveness and startup probe endpoint." },
-        "readiness": { "$ref": "#/$defs/probe", "description": "Readiness probe endpoint." }
+        "liveness": {
+          "$ref": "#/$defs/probe",
+          "description": "Liveness and startup probe endpoint."
+        },
+        "readiness": {
+          "$ref": "#/$defs/probe",
+          "description": "Readiness probe endpoint."
+        }
       }
     },
     "resources": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["requests", "limits"],
+      "required": [
+        "requests",
+        "limits"
+      ],
       "properties": {
-        "requests": { "$ref": "#/$defs/computeResources" },
-        "limits": { "$ref": "#/$defs/computeResources" }
+        "requests": {
+          "$ref": "#/$defs/computeResources"
+        },
+        "limits": {
+          "$ref": "#/$defs/computeResources"
+        }
       }
     },
     "replicas": {
       "description": "Replica bounds for the HorizontalPodAutoscaler, which scales on CPU at 70%. Defaults to 2 and 3 in the chart.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["min", "max"],
+      "required": [
+        "min",
+        "max"
+      ],
       "properties": {
-        "min": { "type": "integer", "minimum": 2, "maximum": 3 },
-        "max": { "type": "integer", "minimum": 2, "maximum": 3 }
+        "min": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 3
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 3
+        }
       }
     },
     "httpRoute": {
       "description": "Exposes the service at this hostname through the environment's Gateway, and admits only the load balancer's source ranges to its Pods.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["hostname"],
+      "required": [
+        "hostname"
+      ],
       "properties": {
-        "hostname": { "type": "string", "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?\\.)+[a-z]{2,63}$" }
+        "hostname": {
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?\\.)+[a-z]{2,63}$"
+        }
       }
     },
     "metrics": {
       "description": "Has the environment's Prometheus collectors scrape the application's metrics port, and admits only them to it.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["port"],
+      "required": [
+        "port"
+      ],
       "properties": {
         "port": {
           "description": "Port the application serves Prometheus metrics on. Must differ from containerPort.",
@@ -106,10 +156,70 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "env"],
+        "required": [
+          "name",
+          "env"
+        ],
         "properties": {
-          "name": { "description": "Secret Manager secret ID, also the file name in the mount directory.", "type": "string", "pattern": "^[A-Za-z0-9_-]{1,255}$" },
-          "env": { "description": "Environment variable that receives the file path. Must end in _FILE.", "type": "string", "pattern": "^[A-Z][A-Z0-9_]*_FILE$" }
+          "name": {
+            "description": "Secret Manager secret ID, also the file name in the mount directory.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,255}$"
+          },
+          "env": {
+            "description": "Environment variable that receives the file path. Must end in _FILE.",
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*_FILE$"
+          }
+        }
+      }
+    },
+    "config": {
+      "description": "Extra environment variables for the application, as strings. Keys the chart sets itself are refused.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 512
+      }
+    },
+    "shutdown": {
+      "description": "How long a Pod may take to stop. preStopSeconds keeps a Pod serving while the load balancer stops sending it requests.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "graceSeconds": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 600
+        },
+        "preStopSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60
+        }
+      }
+    },
+    "backendPolicy": {
+      "description": "Load balancer settings for the HTTPRoute's backend: a request timeout, connection draining, and a health check on the readiness path. Needs httpRoute.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timeoutSeconds",
+        "drainingSeconds"
+      ],
+      "properties": {
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "drainingSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600
         }
       }
     }
@@ -128,18 +238,34 @@
     "probe": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path"],
+      "required": [
+        "path"
+      ],
       "properties": {
-        "path": { "type": "string", "pattern": "^/[^\\s]*$" }
+        "path": {
+          "type": "string",
+          "pattern": "^/[^\\s]*$"
+        }
       }
     },
     "computeResources": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["cpu", "memory"],
+      "required": [
+        "cpu",
+        "memory"
+      ],
       "properties": {
-        "cpu": { "description": "Millicores, such as 100m.", "type": "string", "pattern": "^[1-9][0-9]*m$" },
-        "memory": { "description": "Mebibytes, such as 128Mi.", "type": "string", "pattern": "^[1-9][0-9]*Mi$" }
+        "cpu": {
+          "description": "Millicores, such as 100m.",
+          "type": "string",
+          "pattern": "^[1-9][0-9]*m$"
+        },
+        "memory": {
+          "description": "Mebibytes, such as 128Mi.",
+          "type": "string",
+          "pattern": "^[1-9][0-9]*Mi$"
+        }
       }
     }
   }

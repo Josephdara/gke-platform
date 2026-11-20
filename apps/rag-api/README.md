@@ -13,7 +13,8 @@ rag-api is the assistant's backend. It takes a question, builds a prompt that fi
 | `src/rag_api/limits.py` | The per-replica admission limit and the rate limit |
 | `src/rag_api/retrieval.py` | Retrieval: the question's embedding, the pgvector search as the read-only `rag_api` role, and the source lookup |
 | `src/rag_api/routes.py` | Sign-in, conversations, sources, health, readiness, and status endpoints |
-| `src/rag_api/auth.py` | Accounts with scrypt password hashes, signed session cookies, the Origin and custom-header check |
+| `src/rag_api/auth.py` | Accounts, signed session cookies, the Origin and custom-header check |
+| `src/rag_api/passwords.py` | scrypt password hashes, with only the standard library, so `tools/make_users.py` runs with any recent `python3` |
 | `src/rag_api/conversations.py` | Conversation storage, scoped to the signed-in user, in pgvector or in memory |
 | `src/rag_api/web.py` | The built frontend, and the security headers on every response |
 | `frontend/` | The web interface; see its [README](frontend/README.md) |

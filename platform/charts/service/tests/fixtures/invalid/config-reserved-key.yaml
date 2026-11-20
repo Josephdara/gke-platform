@@ -1,0 +1,3 @@
+# expect: config sets ENVIRONMENT, which the chart sets itself
+config:
+  ENVIRONMENT: production

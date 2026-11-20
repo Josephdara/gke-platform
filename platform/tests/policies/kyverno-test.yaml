@@ -16,6 +16,7 @@ resources:
   - deployments.yaml
   # The real pgvector manifest, so the fixture cannot drift from what Argo CD applies.
   - ../../services/pgvector/statefulset.yaml
+  - ../../services/ingest/cronjob.yaml
 variables: values.yaml
 results:
   - policy: require-approved-registry
@@ -221,5 +222,40 @@ results:
   - policy: require-read-only-root-filesystem
     resources: [staging-pgvector]
     kind: StatefulSet
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-approved-registry
+    resources: [staging-ingest]
+    kind: CronJob
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-image-digest
+    resources: [staging-ingest]
+    kind: CronJob
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-resources
+    resources: [staging-ingest]
+    kind: CronJob
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-labels
+    resources: [staging-ingest]
+    kind: CronJob
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-service-account
+    resources: [staging-ingest]
+    kind: CronJob
+    result: pass
+    isValidatingPolicy: true
+  - policy: restrict-pod-security
+    resources: [staging-ingest]
+    kind: CronJob
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-read-only-root-filesystem
+    resources: [staging-ingest]
+    kind: CronJob
     result: pass
     isValidatingPolicy: true

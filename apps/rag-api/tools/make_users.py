@@ -15,8 +15,11 @@ import json
 from pathlib import Path
 import sys
 
+if not hasattr(__import__("hashlib"), "scrypt"):
+    sys.exit("This python3 has no hashlib.scrypt, for example macOS's /usr/bin/python3. "
+             "Use a python.org or Homebrew Python 3.12 or later.")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from rag_api.auth import hash_password  # noqa: E402
+from rag_api.passwords import hash_password  # noqa: E402
 
 
 def ask(prompt: str) -> str:

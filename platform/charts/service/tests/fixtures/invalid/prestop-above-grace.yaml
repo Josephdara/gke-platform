@@ -1,0 +1,4 @@
+# expect: shutdown.preStopSeconds is above shutdown.graceSeconds
+shutdown:
+  graceSeconds: 30
+  preStopSeconds: 45

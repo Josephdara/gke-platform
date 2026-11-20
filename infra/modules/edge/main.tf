@@ -1,6 +1,5 @@
 locals {
-  api_host = "api.${var.environment}.${var.dns_name}"
-  hosts    = { for h in var.hosts : h => "${h}.${var.environment}.${var.dns_name}" }
+  hosts = { for h in var.hosts : h => "${h}.${var.environment}.${var.dns_name}" }
 }
 
 resource "google_dns_managed_zone" "this" {
@@ -90,12 +89,18 @@ resource "google_compute_global_address" "gateway" {
   name    = "${var.environment}-gateway-ip"
 }
 
-resource "google_dns_record_set" "api" {
-  count        = var.lab_enabled ? 1 : 0
+# One A record per hostname, pointing at the lab's Gateway address. Lab only, like the address.
+resource "google_dns_record_set" "host" {
+  for_each     = var.lab_enabled ? local.hosts : {}
   project      = var.project_id
   managed_zone = google_dns_managed_zone.this.name
-  name         = "${local.api_host}."
+  name         = "${each.value}."
   type         = "A"
   ttl          = 300
   rrdatas      = [google_compute_global_address.gateway[0].address]
+}
+
+moved {
+  from = google_dns_record_set.api[0]
+  to   = google_dns_record_set.host["api"]
 }

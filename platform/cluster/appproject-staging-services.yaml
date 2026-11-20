@@ -33,3 +33,7 @@ spec:
       kind: HTTPRoute
     - group: monitoring.googleapis.com
       kind: PodMonitoring
+    - group: networking.gke.io
+      kind: GCPBackendPolicy
+    - group: networking.gke.io
+      kind: HealthCheckPolicy

@@ -11,8 +11,10 @@ This is the Kubernetes side of the platform: the shared Helm chart, each service
 | [`charts/model-server/`](charts/model-server/) | Helm chart that deploys one model server; see [Model-server chart](#model-server-chart) |
 | [`services/platform-verification-api/`](services/platform-verification-api/) | Chart values for the API: `values.yaml` (shared) plus one environment file, `values-staging.yaml` or `values-local.yaml`    |
 | [`services/llm-cpu/`](services/llm-cpu/), [`services/embeddings/`](services/embeddings/) | Model-server chart values for the chat model and the embedding model: `values.yaml` plus `values-staging.yaml` |
-| [`profiles/`](profiles/) | One folder per session profile. The `staging-profile` root Application syncs the active one; `cpu/` holds the llm-cpu and pgvector Applications |
+| [`profiles/`](profiles/) | One folder per session profile. The `staging-profile` root Application syncs the active one; `cpu/` holds the llm-cpu, pgvector, ingest, and rag-api Applications |
 | [`services/pgvector/`](services/pgvector/) | The vector database: a Kustomize directory with a one-replica StatefulSet, its 10 GiB disk, a headless Service, its passwords from Secret Manager, and the init script that creates the `ingest` and `rag_api` roles; see [Vector database](#vector-database) |
+| [`services/ingest/`](services/ingest/) | ingest's service account, its database password from Secret Manager, and a suspended CronJob pinned to one corpus revision; a session starts it by hand |
+| [`services/rag-api/`](services/rag-api/) | Service-chart values for the assistant: its in-cluster URLs, three mounted secrets, the `assistant` HTTPRoute, a longer shutdown, and the load balancer's timeout, draining, and health check |
 | [`namespaces/`](namespaces/)                                                 | Local namespace manifest that enforces the Pod Security "restricted" profile                                                |
 | [`tests/`](tests/)                                                           | Chart validation, live-check and inference-check scripts; each chart's fixtures live in its own `tests/fixtures/`, and the policy fixtures in `tests/policies/` |
 | [`argocd/`](argocd/)                                                         | Argo CD install overlay, the root project and Application, and `bootstrap.sh`                                               |
@@ -376,7 +378,7 @@ Exit codes: `0` when every check passes, `1` when a check fails, and `2` when a 
 
 The Kubernetes schemas are pinned to version 1.36.4 (the `KUBERNETES_VERSION` variable in the script), matching the GKE cluster from my first lab session. The first run downloads the schemas into `~/.cache/kubeconform`, so it needs internet access; later runs use the cache. Set `KUBECONFORM_CACHE` to use a different directory.
 
-kubeconform skips SecretProviderClass, HTTPRoute, and PodMonitoring, because it has no schema for these custom resources; the secret list inside a SecretProviderClass is a YAML string that no schema could check anyway. Argo CD's sync checks them in the cluster.
+kubeconform skips SecretProviderClass, HTTPRoute, PodMonitoring, GCPBackendPolicy, and HealthCheckPolicy, because it has no schema for these custom resources; the secret list inside a SecretProviderClass is a YAML string that no schema could check anyway. Argo CD's sync checks them in the cluster.
 
 To add an invalid fixture, create a small values file in the chart's `tests/fixtures/invalid/` that changes one input, and make its first line `# expect: <text the error must contain>`. Match a short, stable part of the message, such as the field path.
 
@@ -460,6 +462,9 @@ Add `--show-only templates/service.yaml` to render one template. Rendering does 
 | `httpRoute.hostname` | No | A DNS hostname. Renders an HTTPRoute on the environment's Gateway and a NetworkPolicy that admits only the load balancer |
 | `metrics.port` | No | Integer from 1024 to 65535, different from `containerPort`. Names a `metrics` container port, sets `METRICS_PORT`, renders a PodMonitoring that the environment's managed Prometheus scrapes every 30 seconds, labelling each series with the Pod's `app.kubernetes.io/version` as `version`, and admits only the collectors in `gmp-system` to the port |
 | `secrets` | No | Entries with `name`, a Secret Manager secret ID, and `env`, an environment variable ending in `_FILE`; each name and env appears once |
+| `config` | No | Extra environment variables as strings, with uppercase keys. A key the chart sets itself, such as `ENVIRONMENT` or a secret's `env`, is refused |
+| `shutdown.graceSeconds`, `shutdown.preStopSeconds` | No, default 30 and 0 | Termination grace from 30 to 600 seconds, and a preStop wait of up to 60 that keeps the Pod serving while the load balancer stops sending it requests; the wait must fit within the grace period |
+| `backendPolicy.timeoutSeconds`, `backendPolicy.drainingSeconds` | No | Needs `httpRoute`. Renders a GCPBackendPolicy with that request timeout and connection draining, and a HealthCheckPolicy on the readiness path |
 
 Each secret is mounted read-only at `/var/secrets/<name>` from its latest version, and its `env` variable holds that path, so the value never passes through Git or the ConfigMap. A secret mounts only if Terraform grants it to the service's Kubernetes service account; without the grant, new Pods stay in `ContainerCreating` while the existing Pods keep serving. Set `secrets` in the environment values file, because secret IDs include the environment.
 
@@ -474,6 +479,7 @@ The chart's version is the version of its values interface. A change that breaks
 
 | Version | Change |
 | --- | --- |
+| 1.2.0 | Adds the optional `config`, `shutdown`, and `backendPolicy` |
 | 1.1.0 | Adds the optional `metrics` |
 | 1.0.0 | Breaking: `replicas.min` and `replicas.max` replace `replicaCount`, and a HorizontalPodAutoscaler owns the replica count. Adds a PodDisruptionBudget and the optional `httpRoute` |
 | 0.2.0 | Adds `secrets` |

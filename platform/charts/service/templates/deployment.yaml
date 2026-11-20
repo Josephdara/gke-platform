@@ -2,6 +2,7 @@
 {{- include "service.validateSecrets" . }}
 {{- include "service.validateReplicas" . }}
 {{- include "service.validatePorts" . }}
+{{- include "service.validateConfig" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,7 +30,7 @@ spec:
       serviceAccountName: {{ include "service.serviceAccountName" . }}
       automountServiceAccountToken: false
       enableServiceLinks: false
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: {{ (.Values.shutdown).graceSeconds | default 30 }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -90,6 +91,12 @@ spec:
             timeoutSeconds: 2
             failureThreshold: 3
             successThreshold: 1
+          {{- with (.Values.shutdown).preStopSeconds }}
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: {{ . }}
+          {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             privileged: false
