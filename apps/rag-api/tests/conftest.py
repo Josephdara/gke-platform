@@ -18,8 +18,11 @@ class StaticRetriever:
     async def retrieve(self, question):
         return list(self.passages)
 
-    async def health(self):
-        return True
+    async def source(self, chunk_id):
+        return None
+
+    async def status(self):
+        return "ok"
 
 
 PASSAGES = [

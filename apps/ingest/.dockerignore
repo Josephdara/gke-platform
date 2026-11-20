@@ -1,0 +1,7 @@
+**
+!requirements.txt
+!src/
+!src/ingest/
+!src/ingest/*.py
+!migrations/
+!migrations/*.sql

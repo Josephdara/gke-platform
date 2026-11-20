@@ -1,0 +1,62 @@
+{
+  "kubernetes": {
+    "repository": "https://github.com/kubernetes/website",
+    "commit": "be58364903ad78d60314019b81759f05c33b4af5",
+    "contentRoot": "content/en/docs",
+    "site": "https://kubernetes.io/docs",
+    "license": "CC BY 4.0",
+    "attribution": "Kubernetes Documentation, © The Kubernetes Authors, licensed under CC BY 4.0",
+    "pages": [
+      "concepts/workloads/controllers/deployment.md",
+      "concepts/workloads/controllers/statefulset.md",
+      "concepts/workloads/controllers/job.md",
+      "concepts/workloads/controllers/cron-jobs.md",
+      "concepts/workloads/pods/pod-lifecycle.md",
+      "concepts/workloads/pods/disruptions.md",
+      "concepts/workloads/autoscaling/horizontal-pod-autoscale.md",
+      "concepts/services-networking/service.md",
+      "concepts/services-networking/network-policies.md",
+      "concepts/services-networking/dns-pod-service.md",
+      "concepts/configuration/configmap.md",
+      "concepts/configuration/secret.md",
+      "concepts/configuration/manage-resources-containers.md",
+      "concepts/policy/limit-range.md",
+      "concepts/policy/resource-quotas.md",
+      "concepts/security/pod-security-standards.md",
+      "concepts/security/service-accounts.md",
+      "concepts/scheduling-eviction/taint-and-toleration.md",
+      "concepts/scheduling-eviction/assign-pod-node.md",
+      "concepts/storage/persistent-volumes.md",
+      "tasks/configure-pod-container/configure-liveness-readiness-startup-probes.md",
+      "tasks/run-application/configure-pdb.md",
+      "tasks/debug/debug-application/debug-pods.md",
+      "tasks/debug/debug-application/debug-running-pod.md",
+      "tasks/debug/debug-application/debug-service.md"
+    ]
+  },
+  "repository": {
+    "url": "https://github.com/Josephdara/gke-platform",
+    "license": "Repository owner's documentation, used with permission",
+    "attribution": "gke-platform documentation",
+    "paths": [
+      "README.md",
+      "RUNBOOK.md",
+      "GUIDE.md",
+      "architecture.md",
+      "apps/README.md",
+      "apps/platform-verification-api/README.md",
+      "apps/rag-api/README.md",
+      "apps/ingest/README.md",
+      "infra/README.md",
+      "pipeline/README.md",
+      "platform/README.md",
+      "corpus/README.md"
+    ],
+    "globs": ["platform/evidence/*.md"]
+  },
+  "synthetic": {
+    "license": "Synthetic test document",
+    "attribution": "gke-platform evaluation set",
+    "paths": ["corpus/synthetic/maintenance-window.md", "corpus/synthetic/support-escalation.md"]
+  }
+}

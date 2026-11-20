@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from .inference import InferenceBackend, Message
-from .prompt import Passage, build_messages
+from .prompt import Passage, build_messages, passage_heading
 
 
 class BudgetExceeded(Exception):
@@ -55,7 +55,7 @@ async def fit_prompt(
     kept: list[Passage] = []
     spent = 0
     for number, passage in enumerate(passages, start=1):
-        cost = await backend.count_text(f"[S{number}] {passage.title}\n{passage.text}")
+        cost = await backend.count_text(f"[S{number}] {passage_heading(passage)}\n{passage.text}")
         if spent + cost > budget.passage_tokens:
             break
         kept.append(passage)

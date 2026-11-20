@@ -13,7 +13,8 @@ resource "google_storage_bucket" "evidence" {
 
   lifecycle_rule {
     condition {
-      age = 90
+      age            = 90
+      matches_prefix = var.evidence_expiring_prefixes
     }
     action {
       type = "Delete"

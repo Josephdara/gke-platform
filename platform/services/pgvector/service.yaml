@@ -1,0 +1,23 @@
+# Headless: the StatefulSet's one Pod is reached by name. There is no route outside the cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: staging-pgvector
+  namespace: staging-inference
+  labels:
+    app.kubernetes.io/name: pgvector
+    app.kubernetes.io/instance: staging-pgvector
+    project: gke-build-proj
+    environment: staging
+    service: pgvector
+    owner: jd
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: pgvector
+    app.kubernetes.io/instance: staging-pgvector
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP

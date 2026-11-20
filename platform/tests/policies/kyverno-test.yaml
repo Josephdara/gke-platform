@@ -14,6 +14,8 @@ policies:
   - ../../cluster/policies/require-inference-bounds.yaml
 resources:
   - deployments.yaml
+  # The real pgvector manifest, so the fixture cannot drift from what Argo CD applies.
+  - ../../services/pgvector/statefulset.yaml
 variables: values.yaml
 results:
   - policy: require-approved-registry
@@ -185,4 +187,39 @@ results:
     resources: [llm-cpu-no-bounds]
     kind: Deployment
     result: fail
+    isValidatingPolicy: true
+  - policy: require-approved-registry
+    resources: [staging-pgvector]
+    kind: StatefulSet
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-image-digest
+    resources: [staging-pgvector]
+    kind: StatefulSet
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-resources
+    resources: [staging-pgvector]
+    kind: StatefulSet
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-labels
+    resources: [staging-pgvector]
+    kind: StatefulSet
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-service-account
+    resources: [staging-pgvector]
+    kind: StatefulSet
+    result: pass
+    isValidatingPolicy: true
+  - policy: restrict-pod-security
+    resources: [staging-pgvector]
+    kind: StatefulSet
+    result: pass
+    isValidatingPolicy: true
+  - policy: require-read-only-root-filesystem
+    resources: [staging-pgvector]
+    kind: StatefulSet
+    result: pass
     isValidatingPolicy: true

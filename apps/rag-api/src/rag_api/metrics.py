@@ -21,7 +21,8 @@ RAG_REJECTIONS = Counter("rag_rejections", "Chat requests refused before generat
 RAG_INVALID_CITATIONS = Counter("rag_invalid_citations", "Citations in answers that name no retrieved passage.")
 
 # Every value the status label can take, so dashboards see a stable set.
-OUTCOMES = ("complete", "length", "cancelled", "deadline", "stalled", "upstream_failed", "model_unavailable")
+OUTCOMES = ("complete", "length", "cancelled", "deadline", "stalled", "upstream_failed", "model_unavailable",
+            "retrieval_unavailable")
 REJECTION_REASONS = ("admission", "rate_limit", "input_too_long")
 for outcome in OUTCOMES:
     RAG_REQUESTS.labels(outcome)

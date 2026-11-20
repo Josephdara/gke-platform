@@ -49,6 +49,20 @@ module "secrets" {
     platform-verification-api-demo = [
       { namespace = var.environment, service = "platform-verification-api" }
     ]
+    # pgvector's superuser creates the two application roles at first start; nothing else uses it.
+    pgvector-admin = [
+      { namespace = "${var.environment}-inference", service = "pgvector" }
+    ]
+    # ingest owns the schema and the corpus tables.
+    pgvector-ingest = [
+      { namespace = "${var.environment}-inference", service = "pgvector" },
+      { namespace = "${var.environment}-inference", service = "ingest" }
+    ]
+    # rag-api reads the corpus and writes only its own conversations.
+    pgvector-rag-api = [
+      { namespace = "${var.environment}-inference", service = "pgvector" },
+      { namespace = var.environment, service = "rag-api" }
+    ]
   }
   ungranted_secrets = ["forbidden-demo"]
 }
@@ -69,7 +83,26 @@ locals {
     }
   ]...)
   buckets = {
-    models = module.foundation.models_bucket_name
+    models   = module.foundation.models_bucket_name
+    evidence = module.pipeline.evidence_bucket_name
+  }
+  # Object access limited to one prefix by an IAM condition on the object name. The readers
+  # fetch known object paths and never list, so a bucket-level list permission is not needed.
+  prefix_grants = {
+    "models/corpus/ingest" = {
+      bucket    = "models"
+      prefix    = "corpus/"
+      role      = "roles/storage.objectViewer"
+      namespace = "${var.environment}-inference"
+      service   = "ingest"
+    }
+    "evidence/inference/ingest/ingest" = {
+      bucket    = "evidence"
+      prefix    = "inference/ingest/"
+      role      = "roles/storage.objectCreator"
+      namespace = "${var.environment}-inference"
+      service   = "ingest"
+    }
   }
 }
 
@@ -88,6 +121,27 @@ resource "google_storage_bucket_iam_member" "workload_read" {
   member = each.value.member
 }
 
+resource "google_storage_bucket_iam_member" "workload_prefix" {
+  for_each = local.prefix_grants
+
+  bucket = local.buckets[each.value.bucket]
+  role   = each.value.role
+  member = "principal://iam.googleapis.com/${module.secrets.workload_pool}/subject/ns/${each.value.namespace}/sa/${var.environment}-${each.value.service}"
+
+  condition {
+    title       = "only-${trimsuffix(replace(each.value.prefix, "/", "-"), "-")}"
+    description = "Objects under ${each.value.prefix} only"
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${local.buckets[each.value.bucket]}/objects/${each.value.prefix}\")"
+  }
+}
+
+# Uploads also need the bucket's metadata, as the pipeline's evidence uploader does.
+resource "google_storage_bucket_iam_member" "ingest_evidence_bucket_reader" {
+  bucket = module.pipeline.evidence_bucket_name
+  role   = "roles/storage.legacyBucketReader"
+  member = "principal://iam.googleapis.com/${module.secrets.workload_pool}/subject/ns/${var.environment}-inference/sa/${var.environment}-ingest"
+}
+
 module "pipeline" {
   source = "../../modules/pipeline"
 
@@ -101,6 +155,8 @@ module "pipeline" {
   publish_service_account_id  = module.identity.ci_build_publish_id
   images_repository_id        = module.foundation.images_repository_id
   labels                      = { component = "pipeline" }
+  # Build evidence under these prefixes expires after 90 days; inference evidence is kept.
+  evidence_expiring_prefixes = ["platform-verification-api/"]
 }
 
 resource "google_storage_bucket_iam_member" "ci_write_evidence" {

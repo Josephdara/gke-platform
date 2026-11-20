@@ -27,7 +27,7 @@ Both triggers run in `us-east4` on the `staging-github` connection, which links 
 | Step | Validate | Publish | What it does |
 | --- | --- | --- | --- |
 | `test` | Yes | Yes | Installs `requirements-test.txt` in the image's own Python and runs `pytest` and `pip check` |
-| `test-rag-api` | Yes | No | The same for [`apps/rag-api`](../apps/rag-api/README.md), whose image is not built yet |
+| `test-rag-api`, `test-ingest` | Yes | No | The same for [`apps/rag-api`](../apps/rag-api/README.md) and [`apps/ingest`](../apps/ingest/README.md), whose images are not published yet |
 | `build` | Yes | Yes | Builds the image for `linux/amd64` and tags it `sha-<short commit>` |
 | `export` | Yes | Yes | Saves the image to a tar in the workspace, so it can be scanned before it is pushed |
 | `scan` | Yes | Yes | Trivy gate: fails on fixable MEDIUM, HIGH, or CRITICAL vulnerabilities and on any secret, after the accepted findings |
@@ -99,7 +99,7 @@ Accepted findings still appear in `scan.json`, marked as suppressed.
 
 ## Updating the base image
 
-The base image digest is pinned in seven places, and they must always match: the Dockerfile `FROM` line, the `test` step in both build files, and the `test-rag-api`, `tools`, `chart`, and `terraform` steps in the validate build. This lists them:
+The base image digest is pinned in nine places, and they must always match: the `FROM` line in the API's and ingest's Dockerfiles, the `test` step in both build files, and the `test-rag-api`, `test-ingest`, `tools`, `chart`, and `terraform` steps in the validate build. This lists them:
 
 ```sh
 git grep -n "python:3.14.10-slim-bookworm@sha256"

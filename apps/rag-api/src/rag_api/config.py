@@ -30,6 +30,21 @@ class Settings:
     history_turns: int = 2
     max_input_chars: int = 2000
     rate_limit_per_minute: int = 10
+    # Retrieval is on when a database host is set; without one, every question gets no passages.
+    database_host: str | None = None
+    database_port: int = 5432
+    database_name: str = "rag"
+    database_user: str = "rag_api"
+    database_password_file: str | None = None
+    embeddings_url: str | None = None
+    retrieval_top_k: int = 5
+    # Passages scoring below this cosine similarity are dropped. 0 keeps every top-k passage.
+    similarity_floor: float = 0.0
+    # bge-small-en-v1.5's instruction for short queries that retrieve longer passages.
+    query_prefix: str = "Represent this sentence for searching relevant passages: "
+    embedding_model: str = "bge-small-en-v1.5"
+    embedding_revision: str = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
+    embedding_dimensions: int = 384
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "Settings":
@@ -62,6 +77,21 @@ class Settings:
         if not model_url.startswith(("http://", "https://")) or " " in model_url:
             raise ConfigurationError("MODEL_URL must be an http:// or https:// URL")
 
+        database_host = None if values.get("DATABASE_HOST") is None else text("DATABASE_HOST")
+        database_password_file = embeddings_url = None
+        if database_host is not None:
+            database_password_file = text("DATABASE_PASSWORD_FILE")
+            embeddings_url = text("EMBEDDINGS_URL").rstrip("/")
+            if not embeddings_url.startswith(("http://", "https://")) or " " in embeddings_url:
+                raise ConfigurationError("EMBEDDINGS_URL must be an http:// or https:// URL")
+        floor_text = text("SIMILARITY_FLOOR", "0")
+        try:
+            similarity_floor = float(floor_text)
+        except ValueError:
+            similarity_floor = -1.0
+        if not 0.0 <= similarity_floor < 1.0:
+            raise ConfigurationError("SIMILARITY_FLOOR must be a number from 0 up to 1")
+
         settings = cls(
             environment=text("ENVIRONMENT"),
             release_version=text("RELEASE_VERSION"),
@@ -80,6 +110,14 @@ class Settings:
             history_turns=integer("HISTORY_TURNS", 2, 0, 10),
             max_input_chars=integer("MAX_INPUT_CHARS", 2000, 1, 20000),
             rate_limit_per_minute=integer("RATE_LIMIT_PER_MINUTE", 10, 1, 1000),
+            database_host=database_host,
+            database_port=integer("DATABASE_PORT", 5432, 1, 65535),
+            database_name=text("DATABASE_NAME", "rag"),
+            database_user=text("DATABASE_USER", "rag_api"),
+            database_password_file=database_password_file,
+            embeddings_url=embeddings_url,
+            retrieval_top_k=integer("RETRIEVAL_TOP_K", 5, 1, 5),
+            similarity_floor=similarity_floor,
         )
         if settings.output_tokens + settings.passage_tokens >= settings.context_tokens:
             raise ConfigurationError("OUTPUT_TOKENS plus PASSAGE_TOKENS must be less than CONTEXT_TOKENS")

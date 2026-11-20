@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Validates the API tests and both charts (the shared service chart and the
 # model-server chart): rendering with Kubernetes schema checks, invalid inputs
-# that must fail for the expected reason, model values that must match their
-# manifests, and the admission policy fixtures, every one of which must be
-# evaluated. Usage: platform/tests/validate-chart.sh
+# that must fail for the expected reason, the schema of the pgvector manifests,
+# model values that must match their manifests, and the admission policy
+# fixtures, every one of which must be evaluated. Usage: platform/tests/validate-chart.sh
 # Set SKIP_APP_TESTS=1 to skip the application tests.
 # Exit codes: 0 all checks passed, 1 a check failed, 2 setup problem.
 set -euo pipefail
@@ -15,6 +15,7 @@ VALUES=platform/services/platform-verification-api
 FIXTURES=$CHART/tests/fixtures
 MODEL_CHART=platform/charts/model-server
 MODEL_SERVICES="llm-cpu embeddings"
+MANIFEST_DIRS="platform/services/pgvector"
 APP=apps/platform-verification-api
 KUBERNETES_VERSION=1.36.4
 KUBECONFORM_CACHE=${KUBECONFORM_CACHE:-$HOME/.cache/kubeconform}
@@ -73,6 +74,17 @@ check_valid local "$CHART" local -f "$VALUES/values.yaml" -f "$VALUES/values-loc
 for service in $MODEL_SERVICES; do
   check_valid "$service" "$MODEL_CHART" staging-inference \
     -f "platform/services/$service/values.yaml" -f "platform/services/$service/values-staging.yaml"
+done
+
+# Plain manifests, applied by Argo CD through Kustomize.
+for dir in $MANIFEST_DIRS; do
+  name=$(basename "$dir")
+  if kubeconform -strict -summary -skip SecretProviderClass -ignore-filename-pattern 'kustomization[.]yaml' \
+      -kubernetes-version "$KUBERNETES_VERSION" -cache "$KUBECONFORM_CACHE" "$dir" > "$WORK/$name.kubeconform" 2>&1; then
+    pass "$name: schema ($(tail -n 1 "$WORK/$name.kubeconform"))"
+  else
+    fail "$name: schema" "$WORK/$name.kubeconform"
+  fi
 done
 
 # Prints nothing when rendering fails with the expected text, otherwise the reason.
