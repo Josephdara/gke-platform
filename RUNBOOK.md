@@ -258,7 +258,7 @@ for name in pgvector-admin pgvector-ingest pgvector-rag-api; do python3 -c 'impo
 
 pgvector creates the `ingest` and `rag_api` roles from these when its database is first initialized, which happens in every session. A new version therefore takes effect in the next session.
 
-Then create rag-api's accounts and session key. [`make_users.py`](apps/rag-api/tools/make_users.py) prompts for each username and password, hashes the password with scrypt, and prints only the hashes, so the passwords never reach Secret Manager or your shell history. Add a second account for the load generator and answer `y` when it asks about the rate limit:
+Then create rag-api's accounts and session key. [`make_users.py`](apps/rag-api/tools/make_users.py) needs Python 3.12 or later with `hashlib.scrypt`, such as a python.org or Homebrew build; macOS's `/usr/bin/python3` lacks it. It prompts for each username and password, hashes the password with scrypt, and prints only the hashes, so the passwords never reach Secret Manager or your shell history. Add a second account for the load generator and answer `y` when it asks about the rate limit:
 
 ```bash
 apps/rag-api/tools/make_users.py | gcloud secrets versions add "$ENVIRONMENT-rag-api-users" --project="$PROJECT_ID" --data-file=-
@@ -446,6 +446,29 @@ Run it within an hour of the llm-cpu Pod starting: the image-pull times come fro
 `PASS` and `FAIL` lines are checks: the model servers run the digests in Git, admission denies the broken inference fixtures, the allowed and unlisted callers get the expected answers, the llm-cpu identity reads the models bucket and is refused a secret, and the scaling metric reaches the HPA. `RECORD` lines are measurements for the evidence report and never fail the run: the cold-start stages of both model servers, the service time S of a request with about 2,000 prompt tokens and 384 output tokens, and the admission cap `parallel × (120 − S) / S` per replica.
 
 The script creates test Pods, a temporary namespace and the `staging-debug` service account, and deletes them on exit. Its default context is the reference environment's; set `CONTEXT` for your cluster. The project and owner labels on the test Pods come from `platform/services/llm-cpu/values.yaml`.
+
+### Run the assistant
+
+In a session with `inference_cpu_enabled=true`, the profile also deploys pgvector, ingest, and rag-api. The lab creates an A record for `assistant.staging.<your domain>` as well as `api`, so expect 16 resources to add.
+
+**1. Wait** until `staging-profile` and its Applications are `Synced/Healthy`:
+
+```bash
+kubectl --context "$CONTEXT" -n argocd get applications.argoproj.io
+```
+
+**2. Load the corpus.** The CronJob is suspended; start one run and wait for it. It loads the corpus revision pinned in [`platform/services/ingest/cronjob.yaml`](platform/services/ingest/cronjob.yaml) and writes its report to `inference/ingest/<date>/` in the evidence bucket:
+
+```bash
+JOB="$ENVIRONMENT-ingest-$(date +%H%M)"
+kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference create job --from=cronjob/$ENVIRONMENT-ingest "$JOB"
+kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference wait --for=condition=complete "job/$JOB" --timeout=1200s
+kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference logs "job/$JOB" --tail=1
+```
+
+The last line is the run's report: every document `new` on a fresh database, and no failures.
+
+**3. Open** `https://assistant.staging.<your domain>/` and sign in with an account from `$ENVIRONMENT-rag-api-users`. The status bar shows the model and retrieval as ready. The first answer after the inference node starts can take a few minutes; later ones start streaming in seconds.
 
 ### End a session
 

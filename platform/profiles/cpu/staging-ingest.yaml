@@ -1,0 +1,29 @@
+# The corpus loader, as a suspended CronJob that a session starts by hand once pgvector is ready.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: staging-ingest
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: staging-inference
+  source:
+    repoURL: https://github.com/Josephdara/gke-platform.git
+    targetRevision: main
+    path: platform/services/ingest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging-inference
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

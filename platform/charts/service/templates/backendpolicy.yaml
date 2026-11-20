@@ -1,0 +1,40 @@
+{{- with .Values.backendPolicy }}
+# Streamed answers outlast the load balancer's default 30-second timeout, and draining lets a
+# terminating Pod finish the requests it already has.
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: {{ include "service.fullname" $ }}
+  namespace: {{ include "service.namespace" $ }}
+  labels:
+    {{- include "service.labels" $ | nindent 4 }}
+spec:
+  default:
+    timeoutSec: {{ .timeoutSeconds }}
+    connectionDraining:
+      drainingTimeoutSec: {{ .drainingSeconds }}
+  targetRef:
+    group: ""
+    kind: Service
+    name: {{ include "service.fullname" $ }}
+---
+# The load balancer checks the readiness path, not "/".
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: {{ include "service.fullname" $ }}
+  namespace: {{ include "service.namespace" $ }}
+  labels:
+    {{- include "service.labels" $ | nindent 4 }}
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: {{ $.Values.containerPort }}
+        requestPath: {{ $.Values.probes.readiness.path }}
+  targetRef:
+    group: ""
+    kind: Service
+    name: {{ include "service.fullname" $ }}
+{{- end }}

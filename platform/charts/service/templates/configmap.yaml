@@ -13,6 +13,9 @@ data:
   {{- with .Values.metrics }}
   METRICS_PORT: {{ .port | quote }}
   {{- end }}
+  {{- range $key, $value := .Values.config }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
   {{- range .Values.secrets }}
   {{ .env }}: {{ printf "%s/%s" (include "service.secretsDir" $) .name | quote }}
   {{- end }}

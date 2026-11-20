@@ -1,0 +1,30 @@
+# Shared values for the assistant's backend and web interface. Render with values-staging.yaml.
+project: gke-build-proj
+serviceName: rag-api
+owner: jd
+
+containerPort: 8080
+
+probes:
+  liveness:
+    path: /healthz
+  readiness:
+    path: /readyz
+
+# Measured at about 65 MiB while streaming; a sign-in briefly adds 32 MiB for scrypt.
+resources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+metrics:
+  port: 9090
+
+# An answer may run to the 120-second deadline: the 10-second preStop keeps the Pod serving while
+# the load balancer stops sending it requests, and 150 seconds covers both.
+shutdown:
+  graceSeconds: 150
+  preStopSeconds: 10

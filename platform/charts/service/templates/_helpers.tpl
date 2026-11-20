@@ -63,6 +63,22 @@ Requests must not exceed limits. The schema restricts units to m and Mi, so the 
 {{- end -}}
 {{- end -}}
 
+{{- define "service.validateConfig" -}}
+{{- $reserved := list "SERVICE_NAME" "ENVIRONMENT" "RELEASE_VERSION" "APP_PORT" "METRICS_PORT" -}}
+{{- range .Values.secrets -}}{{- $reserved = append $reserved .env -}}{{- end -}}
+{{- range $key, $_ := .Values.config -}}
+{{- if has $key $reserved -}}
+{{- fail (printf "config sets %s, which the chart sets itself. Remove it from config." $key) -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.backendPolicy (not .Values.httpRoute) -}}
+{{- fail "backendPolicy needs httpRoute: the policy applies to the route's load balancer backend." -}}
+{{- end -}}
+{{- if and .Values.shutdown (gt (int (.Values.shutdown.preStopSeconds | default 0)) (int (.Values.shutdown.graceSeconds | default 30))) -}}
+{{- fail "shutdown.preStopSeconds is above shutdown.graceSeconds. The preStop wait counts against the grace period." -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "service.validatePorts" -}}
 {{- if and .Values.metrics (eq (int .Values.metrics.port) (int .Values.containerPort)) -}}
 {{- fail (printf "metrics.port (%d) equals containerPort. Serve metrics on a separate port." (int .Values.metrics.port)) -}}
