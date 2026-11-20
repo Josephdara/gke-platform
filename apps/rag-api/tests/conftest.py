@@ -1,9 +1,14 @@
+from contextlib import contextmanager
 import io
 import json
+from pathlib import Path
+import tempfile
 
+from fastapi.testclient import TestClient
 import pytest
 
 from rag_api.app import create_app
+from rag_api.auth import hash_password
 from rag_api.config import Settings
 from rag_api.logging import create_logger
 from rag_api.prompt import Passage
@@ -31,9 +36,32 @@ PASSAGES = [
 ]
 
 
+# Test-only accounts. Hashed once per run, because scrypt is deliberately slow.
+PASSWORDS = {"tester": "correct horse battery", "other": "another long password", "benchmark": "benchmark password"}
+AUTH_DIR = Path(tempfile.mkdtemp(prefix="rag-api-auth-"))
+(AUTH_DIR / "users.json").write_text(json.dumps({"users": [
+    {"username": name, "passwordHash": hash_password(password), "rateLimitExempt": name == "benchmark"}
+    for name, password in PASSWORDS.items()]}))
+(AUTH_DIR / "session-key").write_text("k" * 48)
+ORIGIN = "http://testserver"
+HEADERS = {"Origin": ORIGIN, "X-Assistant-Client": "1"}
+AUTH_ENV = {"USERS_FILE": str(AUTH_DIR / "users.json"), "SESSION_KEY_FILE": str(AUTH_DIR / "session-key"),
+            "ALLOWED_ORIGIN": ORIGIN, "COOKIE_SECURE": "false"}
+
+
+@contextmanager
+def signed_in(app, username="tester"):
+    """A client that has signed in and sends the Origin and custom header on every request."""
+    with TestClient(app, headers=HEADERS) as client:
+        response = client.post("/api/session", json={"username": username, "password": PASSWORDS[username]})
+        assert response.status_code == 204, response.text
+        yield client
+
+
 @pytest.fixture
 def settings():
-    return Settings.from_env({"ENVIRONMENT": "test", "RELEASE_VERSION": "test-release", "MODEL_URL": "http://model"})
+    return Settings.from_env({"ENVIRONMENT": "test", "RELEASE_VERSION": "test-release", "MODEL_URL": "http://model",
+                              **AUTH_ENV})
 
 
 @pytest.fixture

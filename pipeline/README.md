@@ -18,7 +18,7 @@ Both triggers run in `us-east4` on the `staging-github` connection, which links 
 | Trigger | Runs when | Runs as | Can |
 | --- | --- | --- | --- |
 | `staging-pr-validate` | A pull request targets `main`. A pull request from anyone but me waits until I comment `/gcbrun` | `staging-build-validate-sa` | Write build logs only |
-| `staging-main-publish` | A merge to `main` changes `apps/platform-verification-api/**` or `pipeline/cloudbuild-publish.yaml`. Markdown files in the app folder are ignored, so a README change does not publish an image | `staging-build-publish-sa` | Write to the image repository; create and list objects in the evidence bucket, but not read, overwrite, or delete them |
+| `staging-main-publish`, `staging-rag-api-publish`, `staging-ingest-publish` | A merge to `main` changes that application's folder under `apps/`, or `pipeline/cloudbuild-publish.yaml`. Each sets `_APP` to its folder, so one build file publishes every application. Markdown files in the app folder are ignored, so a README change does not publish an image | `staging-build-publish-sa` | Write to the image repository; create and list objects in the evidence bucket, but not read, overwrite, or delete them |
 
 `main` requires a pull request and a passing `staging-pr-validate` check, including for me. A change that only touches deployment configuration, such as `values-staging.yaml`, gets the validation check but never starts a publish build.
 
@@ -27,7 +27,9 @@ Both triggers run in `us-east4` on the `staging-github` connection, which links 
 | Step | Validate | Publish | What it does |
 | --- | --- | --- | --- |
 | `test` | Yes | Yes | Installs `requirements-test.txt` in the image's own Python and runs `pytest` and `pip check` |
-| `test-rag-api`, `test-ingest` | Yes | No | The same for [`apps/rag-api`](../apps/rag-api/README.md) and [`apps/ingest`](../apps/ingest/README.md), whose images are not published yet |
+| `test-rag-api`, `test-ingest` | Yes | No | The same for [`apps/rag-api`](../apps/rag-api/README.md) and [`apps/ingest`](../apps/ingest/README.md). In a publish build, `test` runs the published application's own tests |
+| `build-rag-api`, `scan-rag-api`, `build-ingest`, `scan-ingest` and their exports | Yes | No | Build and scan the other two images on every pull request, with the same gate, so a vulnerable image fails the pull request rather than the publish |
+| `frontend-lint` | Yes | No | ESLint, the TypeScript check, and the production build of [the frontend](../apps/rag-api/frontend/README.md), with Node 26 |
 | `build` | Yes | Yes | Builds the image for `linux/amd64` and tags it `sha-<short commit>` |
 | `export` | Yes | Yes | Saves the image to a tar in the workspace, so it can be scanned before it is pushed |
 | `scan` | Yes | Yes | Trivy gate: fails on fixable MEDIUM, HIGH, or CRITICAL vulnerabilities and on any secret, after the accepted findings |

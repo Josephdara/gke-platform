@@ -8,6 +8,7 @@ import pytest
 
 from rag_api.budget import Budget, fit_prompt
 from rag_api.chat import stream_answer
+from rag_api.conversations import MemoryConversationStore
 from rag_api.limits import AdmissionLimiter
 
 from conftest import PASSAGES
@@ -20,11 +21,13 @@ def cancelled_count():
 
 async def open_stream(settings, model, logger):
     backend = model.backend()
-    state = SimpleNamespace(settings=settings, backend=backend, admission=AdmissionLimiter(3), logger=logger)
+    state = SimpleNamespace(settings=settings, backend=backend, admission=AdmissionLimiter(3), logger=logger,
+                            conversations=MemoryConversationStore())
+    conversation_id = await state.conversations.create("tester", "Why?")
     assert state.admission.try_acquire()
     budget = Budget(settings.context_tokens, settings.output_tokens, settings.passage_tokens, settings.history_turns)
     fitted = await fit_prompt("Why?", [], PASSAGES, backend, budget)
-    return state, stream_answer(state, fitted, "request-1", asyncio.get_running_loop().time())
+    return state, stream_answer(state, fitted, "request-1", asyncio.get_running_loop().time(), "tester", conversation_id)
 
 
 @pytest.fixture

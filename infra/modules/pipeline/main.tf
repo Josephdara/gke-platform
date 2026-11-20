@@ -1,5 +1,6 @@
 locals {
-  image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.images_repository_id}/platform-verification-api"
+  repository = "${var.region}-docker.pkg.dev/${var.project_id}/${var.images_repository_id}"
+  image      = "${local.repository}/platform-verification-api"
 }
 
 resource "google_storage_bucket" "evidence" {
@@ -51,21 +52,26 @@ resource "google_cloudbuild_trigger" "validate" {
   }
 }
 
+# One publish trigger per application. A merge publishes only the applications it changed;
+# the API's trigger keeps its original name.
 resource "google_cloudbuild_trigger" "publish" {
+  for_each = toset(var.publish_apps)
+
   project         = var.project_id
   location        = var.region
-  name            = "${var.environment}-main-publish"
+  name            = each.key == "platform-verification-api" ? "${var.environment}-main-publish" : "${var.environment}-${each.key}-publish"
   service_account = var.publish_service_account_id
   filename        = "pipeline/cloudbuild-publish.yaml"
 
   included_files = [
-    "apps/platform-verification-api/**",
+    "apps/${each.key}/**",
     "pipeline/cloudbuild-publish.yaml",
   ]
-  ignored_files = ["apps/platform-verification-api/**/*.md"]
+  ignored_files = ["apps/${each.key}/**/*.md"]
 
   substitutions = {
-    _IMAGE           = local.image
+    _APP             = each.key
+    _IMAGE           = "${local.repository}/${each.key}"
     _EVIDENCE_BUCKET = google_storage_bucket.evidence.name
   }
 
@@ -76,4 +82,8 @@ resource "google_cloudbuild_trigger" "publish" {
       branch = "^main$"
     }
   }
+}
+moved {
+  from = google_cloudbuild_trigger.publish
+  to   = google_cloudbuild_trigger.publish["platform-verification-api"]
 }

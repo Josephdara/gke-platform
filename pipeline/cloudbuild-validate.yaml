@@ -58,6 +58,61 @@ steps:
       - --ignorefile=apps/platform-verification-api/.trivyignore.yaml
       - --exit-code=1
 
+  # Every pull request builds and scans each image, so a vulnerable image fails the PR, not the publish.
+  - id: build-rag-api
+    name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
+    args: [build, --platform, linux/amd64, -t, "validate/rag-api:${SHORT_SHA}", apps/rag-api]
+
+  - id: export-rag-api
+    name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
+    args: [save, -o, /workspace/rag-api.tar, "validate/rag-api:${SHORT_SHA}"]
+
+  - id: scan-rag-api
+    name: ghcr.io/aquasecurity/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+    args:
+      - image
+      - --input=/workspace/rag-api.tar
+      - --cache-dir=/workspace/.trivy
+      - --scanners=vuln,secret
+      - --severity=MEDIUM,HIGH,CRITICAL
+      - --ignore-unfixed
+      - --ignorefile=apps/rag-api/.trivyignore.yaml
+      - --exit-code=1
+
+  # Every pull request builds and scans each image, so a vulnerable image fails the PR, not the publish.
+  - id: build-ingest
+    name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
+    args: [build, --platform, linux/amd64, -t, "validate/ingest:${SHORT_SHA}", apps/ingest]
+
+  - id: export-ingest
+    name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
+    args: [save, -o, /workspace/ingest.tar, "validate/ingest:${SHORT_SHA}"]
+
+  - id: scan-ingest
+    name: ghcr.io/aquasecurity/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+    args:
+      - image
+      - --input=/workspace/ingest.tar
+      - --cache-dir=/workspace/.trivy
+      - --scanners=vuln,secret
+      - --severity=MEDIUM,HIGH,CRITICAL
+      - --ignore-unfixed
+      - --ignorefile=apps/ingest/.trivyignore.yaml
+      - --exit-code=1
+
+  - id: frontend-lint
+    name: node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc
+    dir: apps/rag-api/frontend
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        npm ci --no-audit --no-fund
+        npm run lint
+        npm run typecheck
+        npm run build
+
   - id: tools
     name: python:3.14.10-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b
     waitFor: ['-']
@@ -77,7 +132,7 @@ steps:
     env: [PATH=/workspace/bin:/usr/local/bin:/usr/bin:/bin]
     args: [infra/tests/validate-terraform.sh]
 
-timeout: 1200s
+timeout: 2400s
 
 options:
   logging: CLOUD_LOGGING_ONLY

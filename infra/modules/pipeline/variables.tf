@@ -58,3 +58,8 @@ variable "evidence_expiring_prefixes" {
     error_message = "List at least one prefix; each must end with / and must not be under inference/."
   }
 }
+
+variable "publish_apps" {
+  type        = list(string)
+  description = "Applications under apps/ that get a publish trigger and an image in the image repository."
+}

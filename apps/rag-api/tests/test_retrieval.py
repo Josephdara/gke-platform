@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 
-from fastapi.testclient import TestClient
 import httpx
 import pytest
 
@@ -12,7 +11,7 @@ from rag_api.retrieval import (
     EmbeddingConfigMismatch, PgCorpusStore, PgVectorRetriever, RetrievalUnavailable, TeiEmbeddings,
 )
 
-from conftest import parse_events
+from conftest import parse_events, signed_in
 from fake_model import FakeModelServer
 
 EXPECTED = ("bge-small-en-v1.5", "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a", 384)
@@ -88,7 +87,7 @@ def test_sources(settings):
     assert asyncio.run(retriever.source("not-a-chunk-id")) is None
     assert store.source_calls == []
     app = create_app(settings, backend=FakeModelServer().backend(), retriever=retriever)
-    with TestClient(app) as client:
+    with signed_in(app) as client:
         found = client.get("/api/sources/7-0123456789ab-0")
         missing = client.get("/api/sources/1-0123456789ab-9")
     assert found.status_code == 200
@@ -102,7 +101,7 @@ def test_chat_uses_retrieved_passages(settings, log_stream):
     model = FakeModelServer()
     app = create_app(settings, create_logger(settings, log_stream), model.backend(),
                      PgVectorRetriever(FakeStore(), embeddings(), settings))
-    with TestClient(app) as client:
+    with signed_in(app) as client:
         events = parse_events(client.post("/api/chat", json={"question": "Why restart?"}).text)
     sources = events[0][1]["sources"]
     assert [(s["label"], s["headingPath"]) for s in sources] == [("S1", "Liveness"), ("S2", "Rollouts"), ("S3", "")]
@@ -113,7 +112,7 @@ def test_chat_uses_retrieved_passages(settings, log_stream):
 def test_chat_refuses_when_retrieval_is_unavailable(settings):
     app = create_app(settings, backend=FakeModelServer().backend(),
                      retriever=PgVectorRetriever(FakeStore(), embeddings(healthy=False), settings))
-    with TestClient(app) as client:
+    with signed_in(app) as client:
         response = client.post("/api/chat", json={"question": "Why?"})
         active = app.state.admission.active
     assert response.status_code == 503

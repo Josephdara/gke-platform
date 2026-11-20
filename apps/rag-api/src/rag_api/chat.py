@@ -10,7 +10,9 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict
 from starlette.responses import JSONResponse, StreamingResponse
 
+from .auth import current_user, forbidden_mutation, unauthorized
 from .budget import Budget, BudgetExceeded, FittedPrompt, fit_prompt
+from .conversations import ConversationsUnavailable, StoredMessage, history, valid_id
 from .inference import Finish, InferenceBackend, ModelUnavailable, Token, UpstreamError
 from .metrics import (
     RAG_ACTIVE_STREAMS, RAG_COMPLETION, RAG_GENERATED_TOKENS, RAG_INVALID_CITATIONS, RAG_REJECTIONS,
@@ -34,18 +36,19 @@ class DeadlineReached(Exception):
 
 
 class ChatRequest(BaseModel):
-    # Unknown fields, such as a client-chosen max_tokens, are rejected.
+    # Unknown fields, such as a client-chosen max_tokens, are rejected. History comes only from
+    # the stored conversation, never from the client.
     model_config = ConfigDict(extra="forbid")
     question: str
+    conversationId: str | None = None
+
+
+# How each stream outcome is saved on the answer.
+SAVED_STATUS = {"complete": "complete", "length": "length", "cancelled": "cancelled"}
 
 
 def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=True)}\n\n"
-
-
-def rate_key(request: Request) -> str:
-    # Until sign-in exists, the caller's address is the rate-limit key.
-    return request.client.host if request.client else "unknown"
 
 
 def refuse(reason: str, status: int, detail: str, retry_after: int | None = None) -> JSONResponse:
@@ -56,15 +59,31 @@ def refuse(reason: str, status: int, detail: str, retry_after: int | None = None
 
 @router.post("/api/chat")
 async def chat(request: Request, body: ChatRequest):
+    if refused := forbidden_mutation(request):
+        return refused
+    user = current_user(request)
+    if user is None:
+        return unauthorized()
     state = request.app.state
     settings = state.settings
+    store = state.conversations
     started = time.monotonic()
     question = body.question.strip()
     if not question:
         return JSONResponse({"detail": "question_empty"}, status_code=422)
     if len(question) > settings.max_input_chars:
         return refuse("input_too_long", 422, "question_too_long")
-    wait = state.rate_limiter.check(rate_key(request))
+    conversation = None
+    if body.conversationId is not None:
+        try:
+            conversation = await store.get(user.username, body.conversationId) if valid_id(body.conversationId) else None
+        except ConversationsUnavailable:
+            return JSONResponse({"detail": "upstream_failed"}, status_code=503)
+        if conversation is None:
+            return JSONResponse({"detail": "not_found"}, status_code=404)
+    # The benchmark account is exempt from the session rate limit, never from admission, so
+    # benchmarks measure inference capacity.
+    wait = 0 if user.rate_limit_exempt else state.rate_limiter.check(user.username)
     if wait:
         return refuse("rate_limit", 429, "rate_limited", wait)
     if not state.admission.try_acquire():
@@ -75,7 +94,13 @@ async def chat(request: Request, body: ChatRequest):
         passages = await state.retriever.retrieve(question)
         RAG_RETRIEVAL.observe(time.monotonic() - retrieval_started)
         budget = Budget(settings.context_tokens, settings.output_tokens, settings.passage_tokens, settings.history_turns)
-        fitted = await fit_prompt(question, [], passages, state.backend, budget)
+        fitted = await fit_prompt(question, history(conversation) if conversation else [], passages, state.backend, budget)
+        conversation_id = conversation.id if conversation else await store.create(user.username, question[:64])
+        await store.add_message(user.username, conversation_id, StoredMessage("user", question, "complete", []))
+    except ConversationsUnavailable:
+        state.admission.release()
+        RAG_REQUESTS.labels("upstream_failed").inc()
+        return JSONResponse({"detail": "upstream_failed"}, status_code=503)
     except BudgetExceeded:
         state.admission.release()
         return refuse("input_too_long", 422, "question_too_long")
@@ -92,7 +117,7 @@ async def chat(request: Request, body: ChatRequest):
         state.admission.release()
         raise
 
-    stream = stream_answer(state, fitted, request.state.request_id, started)
+    stream = stream_answer(state, fitted, request.state.request_id, started, user.username, conversation_id)
     return StreamingResponse(stream, media_type="text/event-stream", headers={"Cache-Control": "no-store"})
 
 
@@ -123,7 +148,8 @@ async def bounded(events: AsyncIterator, stall_seconds: float, deadline: float) 
             await events.aclose()
 
 
-async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: float) -> AsyncIterator[str]:
+async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: float, username: str,
+                        conversation_id: str) -> AsyncIterator[str]:
     settings = state.settings
     backend: InferenceBackend = state.backend
     outcome = "upstream_failed"
@@ -137,6 +163,7 @@ async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: f
     try:
         yield sse("meta", {
             "requestId": request_id,
+            "conversationId": conversation_id,
             "promptVersion": PROMPT_VERSION,
             "model": backend.model_info().get("alias"),
             "sources": [
@@ -202,6 +229,16 @@ async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: f
         RAG_GENERATED_TOKENS.inc(generated)
         RAG_REQUESTS.labels(outcome).inc()
         RAG_COMPLETION.observe(time.monotonic() - started)
+        # The answer is saved however the stream ended, with the passages' text, so it still
+        # shows its sources after a document is retired.
+        sources = [{"label": f"S{n}", "chunkId": p.chunk_id, "title": p.title, "headingPath": p.heading_path,
+                    "score": round(p.score, 4), "text": p.text} for n, p in enumerate(fitted.passages, start=1)]
+        try:
+            with anyio.CancelScope(shield=True):
+                await state.conversations.add_message(username, conversation_id, StoredMessage(
+                    "assistant", "".join(parts), SAVED_STATUS.get(outcome, "failed"), sources))
+        except ConversationsUnavailable:
+            state.logger.error("answer_not_saved", extra={"request_id": request_id, "error_type": "ConversationsUnavailable"})
         state.logger.info("chat_completed", extra={
             "request_id": request_id,
             "outcome": outcome,
