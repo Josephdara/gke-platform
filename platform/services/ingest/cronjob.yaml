@@ -59,6 +59,10 @@ spec:
                   value: gs://gke-build-proj-staging-models/corpus/8937eb5aedca/
                 - name: EMBEDDINGS_URL
                   value: http://staging-embeddings.staging-inference.svc.cluster.local:8080
+                # TEI counts each input against its limit of 8 concurrent requests, and its CPU
+                # backend batches 4 at a time; 4 leaves room for rag-api's question embeddings.
+                - name: EMBED_BATCH
+                  value: "4"
                 - name: DATABASE_HOST
                   value: staging-pgvector.staging-inference.svc.cluster.local
                 - name: DATABASE_PASSWORD_FILE
