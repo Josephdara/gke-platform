@@ -1,6 +1,6 @@
 # rag-api
 
-rag-api is the assistant's backend. It takes a question, builds a prompt that fits one model slot, streams the chat model's answer to you as server-sent events, and checks the answer's citations against the passages it sent. It talks to llama.cpp through llama.cpp's OpenAI-compatible routes, so the model server is a configuration value. With a database configured, it embeds each question, retrieves the five closest passages from pgvector, can show any of them in full, and saves each conversation for its signed-in user. It also serves the [frontend](frontend/README.md) from `/`. Without a database, every question gets no passages, the model says the documentation provided does not answer it, and conversations last until the process restarts.
+rag-api is the assistant's backend. It takes a question, builds a prompt that fits one model slot, streams the chat model's answer to you as server-sent events, and checks the answer's citations against the passages it sent. It talks to llama.cpp through llama.cpp's OpenAI-compatible routes, so the model server is a configuration value. With a database configured, it embeds each question, retrieves the five closest passages from pgvector, can show any of them in full, and saves each conversation for its signed-in user. It also serves the [frontend](frontend/README.md) from `/`. Without a database, every question gets a general answer and conversations last until the process restarts.
 
 ## Layout
 
@@ -9,7 +9,7 @@ rag-api is the assistant's backend. It takes a question, builds a prompt that fi
 | `src/rag_api/chat.py` | `POST /api/chat`: limits, retrieval, the prompt budget, and the event stream |
 | `src/rag_api/inference.py` | The inference adapter interface and its llama.cpp implementation |
 | `src/rag_api/budget.py` | Fits the system prompt, history, passages, question, and reserved output into one slot |
-| `src/rag_api/prompt.py` | The grounding prompt, its version, and the citation check |
+| `src/rag_api/prompt.py` | The documentation and general prompts, their version, and the citation check |
 | `src/rag_api/limits.py` | The per-replica admission limit and the rate limit |
 | `src/rag_api/retrieval.py` | Retrieval: the question's embedding, the pgvector search as the read-only `rag_api` role, and the source lookup |
 | `src/rag_api/routes.py` | Sign-in, conversations, sources, health, readiness, and status endpoints |
@@ -42,7 +42,7 @@ A stream sends one `meta` event, then `token` events, then exactly one terminal 
 
 | Event | Data |
 | --- | --- |
-| `meta` | `requestId`, `conversationId`, `promptVersion`, `model`, and `sources`, each with its label (`S1` to `S5`), `chunkId`, `title`, `headingPath`, and similarity `score` |
+| `meta` | `requestId`, `conversationId`, `promptVersion`, `model`, `mode` (`documentation`, or `general` when no passage was relevant), and `sources`, each with its label (`S1` to `S5`), `chunkId`, `title`, `headingPath`, `url` (the source page at the passage's section), and similarity `score` |
 | `token` | `text`: the next piece of the answer |
 | `done` | `status` (`complete`, or `length` when the 384-token limit cut the answer), `usage` (prompt and completion tokens), `timings` (`ttftMs`, `totalMs`), and `citations` (`valid` and `invalid` labels) |
 | `error` | `reason` (`upstream_failed`, `stalled`, `deadline`, or `model_unavailable`) and `partial`, which is true when tokens were already sent |
@@ -75,7 +75,8 @@ If you disconnect, rag-api closes its request to the model server, which frees t
 | `DATABASE_PASSWORD_FILE`, `EMBEDDINGS_URL` | Required with a database | The `rag_api` role's password file, and the embeddings server |
 | `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER` | `5432`, `rag`, `rag_api` | |
 | `RETRIEVAL_TOP_K` | `5` | Passages retrieved, at most 5, because citations run from `[S1]` to `[S5]` |
-| `SIMILARITY_FLOOR` | `0` | Passages below this cosine similarity are dropped; 0 keeps all of them until the evaluation tunes it |
+| `RELEVANCE_FLOOR` | `0.65` | When the best passage scores below this, the question gets no passages and a general answer |
+| `SIMILARITY_FLOOR` | `0.60` | A single passage below this cosine similarity is dropped |
 
 Invalid settings stop the process with exit code 2 and a JSON error that names the field without echoing its value. `OUTPUT_TOKENS` plus `PASSAGE_TOKENS` must stay below `CONTEXT_TOKENS`, and the stall timeout below the deadline.
 
@@ -107,7 +108,7 @@ From `apps/rag-api/`:
 .venv/bin/python -m pip check
 ```
 
-83 tests pass for me, and 4 tests that need a real server or database are skipped. The tests use a fake model server that speaks llama.cpp's routes and stream format and can stream, fail mid-stream, stall, end without a finish reason, refuse, or be unreachable. Every stream test checks that the stream ends with exactly one terminal event and that the request to the model server was closed. The process test starts the real server and sends it SIGTERM during an answer; it is skipped where the environment does not allow binding a local socket.
+85 tests pass for me, and 4 tests that need a real server or database are skipped. The tests use a fake model server that speaks llama.cpp's routes and stream format and can stream, fail mid-stream, stall, end without a finish reason, refuse, or be unreachable. Every stream test checks that the stream ends with exactly one terminal event and that the request to the model server was closed. The process test starts the real server and sends it SIGTERM during an answer; it is skipped where the environment does not allow binding a local socket.
 
 The contract tests check the fake server's assumptions against a real llama.cpp: the stream format, that the template-aware token count equals the prompt size the server reports, and that closing a stream frees the server's slot. Run them with the local model server above whenever the llama.cpp image changes:
 

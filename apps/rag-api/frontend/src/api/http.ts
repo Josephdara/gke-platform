@@ -2,7 +2,7 @@ import { ApiError, MUTATION_HEADERS, isAbort } from './client';
 import type { AssistantApi } from './client';
 import type {
   ApiErrorDetail, ChatEvent, ChatRequest, ConversationRequest, CurrentSession, ConversationResponse,
-  ConversationSummary, SessionRequest, SourceRequest, SourceResponse, StatusResponse,
+  ConversationSummary, SessionRequest, StatusResponse,
 } from './types';
 
 const EVENTS = new Set(['meta', 'token', 'done', 'error']);
@@ -65,10 +65,6 @@ export class HttpAssistantApi implements AssistantApi {
 
   async deleteConversation({ id }: ConversationRequest, signal: AbortSignal): Promise<void> {
     await this.send('DELETE', `/api/conversations/${encodeURIComponent(id)}`, signal);
-  }
-
-  getSource({ chunkId }: SourceRequest, signal: AbortSignal): Promise<SourceResponse> {
-    return this.json(`/api/sources/${encodeURIComponent(chunkId)}`, signal);
   }
 
   async *chat(request: ChatRequest, signal: AbortSignal): AsyncIterable<ChatEvent> {

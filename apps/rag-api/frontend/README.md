@@ -1,6 +1,6 @@
 # Platform Assistant frontend
 
-This is the assistant's web interface: sign-in, conversations, streamed answers, source cards, and a passage drawer for each source. It uses React 19, strict TypeScript, Vite, and Tailwind CSS v4. rag-api serves the built files from `/`, so the page and its API share one origin and its session cookie.
+This is the assistant's web interface: sign-in, conversations, streamed answers rendered as Markdown, and a compact list of each answer's sources that links to the original pages. It uses React 19, strict TypeScript, Vite, Tailwind CSS v4, and react-markdown with remark-gfm. rag-api serves the built files from `/`, so the page and its API share one origin and its session cookie.
 
 There are two builds:
 
@@ -32,7 +32,7 @@ The ordinary stream waits about 3.4 seconds before its first text, then emits on
 | --- | --- |
 | `default` | Sign in and ask a question for a streamed answer with sources. |
 | `loading` | Observe workspace loading, then send a question for the longer thinking state. |
-| `no-sources` | Send a question for a refusal with no sources. |
+| `no-sources` | Send a question for a labelled general answer with no sources. |
 | `unauthorized` | Send a question to expire the session and return to sign-in. |
 | `rate-limited` | Send a question for a 429 with a five-second Retry-After countdown. |
 | `busy` | Send a question for a 429 busy message with the same countdown. |
@@ -44,7 +44,6 @@ The ordinary stream waits about 3.4 seconds before its first text, then emits on
 | `stream-model-unavailable` | Send a question for a model-unavailable event after partial text. |
 | `deadline` | Send a question for a deadline error after partial text. |
 | `stalled` | Send a question for a stalled-stream error after partial text. |
-| `retired-source` | Open any source card for the passage's 404 state. |
 | `invalid-citations` | Complete an answer to see non-clickable unverified S9 and literal HTML-like text. |
 | `sign-in-rate-limited` | Submit valid credentials for a five-second sign-in countdown. Enter the password again afterward. |
 | `retrieval-mismatch` | See the index-mismatch status and a retrieval-unavailable response. |
@@ -53,11 +52,10 @@ The ordinary stream waits about 3.4 seconds before its first text, then emits on
 | `question-empty` | Send a nonempty question to exercise the server's 422 empty-question response. |
 | `question-too-long` | Send a valid-length question to exercise the server's 422 length response. |
 | `conversation-not-found` | Open a saved conversation for its 404 state. |
-| `unsafe-source` | Open a source to see an unsafe URL rejected by the link renderer. |
+| `unsafe-source` | Send a question to see sources with unsafe URLs shown without links. |
 | `unauthorized-status` | Sign in to receive a 401 from status loading. |
 | `unauthorized-list` | Sign in to receive a 401 from conversation-list loading. |
 | `unauthorized-history` | Open a saved conversation to receive a 401. |
-| `unauthorized-source` | Open a saved conversation, then a source to receive a 401. |
 | `unauthorized-delete` | Confirm deletion of a conversation to receive a 401. |
 | `unauthorized-signout` | Sign out to receive a 401 and return to sign-in. |
 
@@ -73,11 +71,11 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The 42 Playwright tests run in Chromium against a mock build served by `vite preview` on `127.0.0.1:4173`. They cover sign-in, streaming, sources and citations, stop, deletion, sign-out, every scenario above, explicit retry, keyboard focus, 360 px light and dark layouts, plain-text rendering of untrusted model output, and that the page makes no unexpected requests or CSP violations. Pull request validation runs lint, the type check, and the build in its `frontend-lint` step; Playwright runs locally.
+The 40 Playwright tests run in Chromium against a mock build served by `vite preview` on `127.0.0.1:4173`. They cover sign-in, streaming, sources and citations, stop, deletion, sign-out, every scenario above, explicit retry, keyboard focus, 360 px light and dark layouts, safe Markdown rendering of untrusted model output, and that the page makes no unexpected requests or CSP violations. Pull request validation runs lint, the type check, and the build in its `frontend-lint` step; Playwright runs locally.
 
 ## How it behaves
 
-- Model output is untrusted: it is rendered as plain text, never as HTML. A citation such as `[S1]` becomes a button only when rag-api validated it; an invalid one is marked "unverified" and is not clickable. Saved answers link the citations that name one of their saved sources.
+- Model output is untrusted. It is rendered as Markdown with react-markdown: raw HTML shows as text, images are dropped, and only http(s) links open, in a new tab. A citation such as `[S1]` links to its source only when rag-api validated it; an invalid one is marked "unverified". Saved answers that finished link the citations that name one of their saved sources.
 - A stopped or failed answer keeps its partial text, marked "Stopped" or "Incomplete". Retry always asks first and never sends silently.
 - A passage that is no longer in the corpus still shows the text saved with the answer.
 - The session cookie is HttpOnly, so the page never reads it. The password is never stored. On load, the page asks `GET /api/session` whether you are already signed in.
@@ -90,18 +88,20 @@ src/
   api/
     types.ts          Request, response, source, error, and SSE event payloads
     client.ts         AssistantApi interface, ApiError, mutation header contract
-    fixtures.ts       Original demo passages and seeded conversations
+    fixtures.ts       Demo sources, answers, and seeded conversations
     mock.ts           In-memory API, scenario selection, abortable token streams
     http.ts           The real client: same-origin requests, the session cookie, streamed events
     index.ts          Chooses the mock or the real client at build time
   components/
-    Answer.tsx        Plain-text answers, validated citations, sources, copy/retry
+    Answer.tsx        Answer mode label, status, copy/retry
     Dialog.tsx        Modal drawer/dialog focus and Escape handling
-    Passage.tsx       Source retrieval, attribution, safe external links, 404 state
+    Markdown.tsx      Safe Markdown, code blocks with copy, validated citation links
     Sidebar.tsx       Conversation navigation and deletion triggers
     SignIn.tsx        Uncontrolled credential form and sign-in cooldown
+    Sources.tsx       One row per source document, linked to its section
   App.tsx             Session state and chat lifecycle
   hooks.ts            Wall-clock Retry-After countdown
+  links.ts            Accepts only http(s) URLs for links
   main.tsx            API construction and React entry point
   styles.css          Tailwind theme tokens, responsive layouts, light/dark themes
 tests/

@@ -25,7 +25,7 @@ def test_readiness_does_not_depend_on_the_model(make_app):
         status = client.get("/api/status").json()
     assert status["model"] == {"runtime": "llamacpp", "alias": "assistant-chat", "status": "unavailable"}
     assert status["retrieval"] == {"status": "ok"}
-    assert status["promptVersion"] == "grounded-v1"
+    assert status["promptVersion"] == "grounded-v2"
     assert status["admission"] == {"active": 0, "limit": 3}
 
 
@@ -35,7 +35,7 @@ def test_chat_is_logged_without_question_or_answer_text(make_app, model, log_str
     entry, = [r for r in records(log_stream) if r["event"] == "chat_completed"]
     assert entry.items() >= {
         "request_id": response.headers["x-request-id"], "outcome": "complete", "passages": 2,
-        "generated_tokens": 3, "invalid_citations": 0, "prompt_version": "grounded-v1",
+        "generated_tokens": 3, "invalid_citations": 0, "prompt_version": "grounded-v2",
     }.items()
     assert "private-question-text" not in log_stream.getvalue()
     assert "Pods restart" not in log_stream.getvalue()

@@ -1,6 +1,6 @@
 import pytest
 
-from rag_api.prompt import SYSTEM_PROMPT, Passage, build_messages, check_citations
+from rag_api.prompt import GENERAL_PROMPT, SYSTEM_PROMPT, Passage, build_messages, check_citations
 
 
 @pytest.mark.parametrize("answer, valid, invalid", [
@@ -21,9 +21,10 @@ def test_every_citation_is_invalid_without_passages():
     assert check_citations("Answer [S1].", passage_count=0).invalid == ["S1"]
 
 
-def test_system_prompt_comes_first_and_never_varies():
+def test_each_system_prompt_comes_first_and_never_varies():
     first = build_messages("one?", [], [Passage("a", "A", "text a")])
-    second = build_messages("two?", [{"role": "user", "content": "x"}, {"role": "assistant", "content": "y"}], [])
+    second = build_messages("two?", [{"role": "user", "content": "x"}, {"role": "assistant", "content": "y"}],
+                            [Passage("b", "B", "text b")])
     assert first[0] == second[0] == {"role": "system", "content": SYSTEM_PROMPT}
 
 
@@ -34,5 +35,6 @@ def test_passages_are_numbered_and_marked_untrusted():
     assert user.index("[S1] Probes") < user.index("[S2] Pods") < user.index("Question: Why?")
 
 
-def test_no_passages_is_stated():
-    assert "none were found" in build_messages("Why?", [], [])[-1]["content"]
+def test_without_passages_the_general_prompt_gets_the_bare_question():
+    messages = build_messages("ping", [], [])
+    assert messages == [{"role": "system", "content": GENERAL_PROMPT}, {"role": "user", "content": "ping"}]
