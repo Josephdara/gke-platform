@@ -43,40 +43,36 @@ test('streams an answer with sources, validates citations only on completion, an
   await signIn(page);
   await ask(page);
   await expect(answer(page).getByText('Searching the documentation, then thinking...')).toBeVisible();
-  await expect(answer(page).getByRole('button', { name: /^Open citation/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
-  await expect(answer(page).getByRole('region', { name: 'Answer sources' })).toBeVisible();
+  // Sources appear only once the answer is finished, and citations link only after they are checked.
+  await expect(answer(page).locator('.sources')).toHaveCount(0);
+  await expect(answer(page).locator('a.citation')).toHaveCount(0);
   await complete(page);
-  await expect(answer(page).getByRole('button', { name: 'Open citation S1', exact: true })).toBeVisible();
-  await expect(answer(page).getByRole('button', { name: 'Open citation S2', exact: true })).toBeVisible();
+  await expect(answer(page).locator('a.citation')).toHaveText(['S1 (opens Platform architecture in a new tab)',
+    'S3 (opens Network Policies in a new tab)', 'S1 (opens Platform architecture in a new tab)', 'S2 (opens Network Policies in a new tab)']);
+  await expect(answer(page).getByText('From your documentation', { exact: true })).toBeVisible();
   await expect(page.getByRole('status')).toContainText('Answer complete.');
   await answer(page).getByRole('button', { name: 'Copy answer' }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('NetworkPolicy');
 });
 
-test('passage drawer opens from a card and a citation, traps focus, and returns it', async ({ page }) => {
+test('answers render Markdown, code copies, and sources group by document with section links', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await signIn(page);
   await ask(page);
   await complete(page);
-  const card = answer(page).getByRole('button', { name: 'Open source S1: Platform architecture', exact: true });
-  await card.click();
-  const drawer = page.getByRole('dialog', { name: 'Source passage' });
-  await expect(drawer.getByRole('heading', { name: 'Platform architecture', exact: true })).toBeVisible();
-  await expect(drawer.getByText('License', { exact: true })).toBeVisible();
-  await expect(drawer.getByText('Attribution', { exact: true })).toBeVisible();
-  const link = drawer.getByRole('link', { name: /View source/ });
-  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-  await expect(link).toHaveAttribute('href', /^https:\/\//);
-  await link.focus();
-  await page.keyboard.press('Tab');
-  await expect(drawer.getByRole('button', { name: 'Close source passage' })).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
-  await expect(link).toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(drawer).not.toBeVisible();
-  await expect(card).toBeFocused();
-  await answer(page).getByRole('button', { name: 'Open citation S1', exact: true }).click();
-  await expect(drawer).toBeVisible();
+  await expect(answer(page).locator('ol > li')).toHaveCount(3);
+  await answer(page).getByRole('button', { name: 'Copy', exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    'apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: default-deny-egress\nspec:\n  podSelector: {}\n  policyTypes:\n    - Egress');
+  const sources = answer(page).locator('.sources');
+  await expect(sources.locator('summary')).toContainText('Sources 2');
+  await sources.locator('summary').click();
+  const policies = sources.getByRole('link', { name: /^Network Policies/ });
+  await expect(policies).toHaveAttribute('href', /network-policies\/#the-two-sorts-of-pod-isolation$/);
+  await expect(policies).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(policies).toHaveAttribute('target', '_blank');
+  await expect(sources.locator('li').nth(1)).toContainText('S2 S3');
 });
 
 test('stopping a stream retains text and preserves it when reopening history', async ({ page }) => {
@@ -86,7 +82,7 @@ test('stopping a stream retains text and preserves it when reopening history', a
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(answer(page).getByText('Stopped', { exact: true })).toBeVisible();
   const stoppedText = await answer(page).locator('.answer-text').innerText();
-  await expect(answer(page).getByRole('button', { name: /^Open citation/ })).toHaveCount(0);
+  await expect(answer(page).locator('a.citation')).toHaveCount(0);
   await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   await page.getByRole('navigation', { name: 'Conversations' }).getByRole('button', { name: /How does the platform stop/ }).first().click();
   await expect(answer(page).getByText('Stopped', { exact: true })).toBeVisible();
@@ -139,12 +135,12 @@ test('loading scenario shows workspace loading and the long first-token wait', a
   await complete(page);
 });
 
-test('no sources scenario gives a grounded refusal with no citation buttons', async ({ page }) => {
+test('a question without matching documentation gets a labelled general answer and no sources', async ({ page }) => {
   await signIn(page, 'no-sources');
-  await ask(page);
+  await ask(page, 'ping');
   await complete(page);
-  await expect(answer(page)).toContainText('No sources found for this answer.');
-  await expect(answer(page).getByRole('button', { name: /^Open (source|citation)/ })).toHaveCount(0);
+  await expect(answer(page).getByText('General answer', { exact: true })).toBeVisible();
+  await expect(answer(page).locator('.sources, .citation')).toHaveCount(0);
 });
 
 test('unauthorized chat sends the user back to sign-in', async ({ page }) => {
@@ -221,7 +217,7 @@ for (const [scenario, message] of [
     await expect(answer(page).getByText('Incomplete', { exact: true })).toBeVisible();
     await expect(answer(page).locator('.answer-text')).not.toBeEmpty();
     await expect(answer(page).locator('.error-text')).toContainText(message);
-    await expect(answer(page).getByRole('button', { name: /^Open citation/ })).toHaveCount(0);
+    await expect(answer(page).locator('a.citation')).toHaveCount(0);
     await answer(page).getByRole('button', { name: 'Retry answer' }).click();
     const dialog = page.getByRole('dialog', { name: 'Send this question again?' });
     await expect(dialog).toBeVisible();
@@ -239,15 +235,6 @@ test('stream failure before any text gives a distinct explanation', async ({ pag
   await expect(answer(page).getByText('Incomplete', { exact: true })).toBeVisible();
 });
 
-test('retired source produces a no-longer-in-corpus passage drawer', async ({ page }) => {
-  await signIn(page, 'retired-source');
-  await page.getByRole('button', { name: /Keeping inference traffic private/ }).first().click();
-  await answer(page).getByRole('button', { name: 'Open source S1: Platform architecture', exact: true }).click();
-  const drawer = page.getByRole('dialog', { name: 'Source passage' });
-  await expect(drawer).toContainText('This passage is no longer in the corpus.');
-  await expect(drawer.getByRole('link', { name: /View source/ })).toHaveCount(0);
-});
-
 test('untrusted model text stays literal and invalid citations are noninteractive', async ({ page }) => {
   const dialogs: string[] = [];
   page.on('dialog', (dialog) => { dialogs.push(dialog.message()); void dialog.dismiss(); });
@@ -256,24 +243,25 @@ test('untrusted model text stays literal and invalid citations are noninteractiv
   await complete(page);
   await expect(answer(page)).toContainText('<script>alert("demo")</script>');
   await expect(answer(page).getByText('[S9: unverified citation]', { exact: true })).toBeVisible();
-  await expect(answer(page).getByRole('button', { name: 'Open citation S9' })).toHaveCount(0);
+  await expect(answer(page).locator('a.citation')).not.toContainText(['S9']);
   expect(dialogs).toEqual([]);
 });
 
 test('unsafe source URLs are not turned into links', async ({ page }) => {
   await signIn(page, 'unsafe-source');
-  await page.getByRole('button', { name: /Keeping inference traffic private/ }).first().click();
-  await answer(page).getByRole('button', { name: 'Open source S1: Platform architecture', exact: true }).click();
-  const drawer = page.getByRole('dialog', { name: 'Source passage' });
-  await expect(drawer).toContainText('not a safe web address');
-  await expect(drawer.getByRole('link')).toHaveCount(0);
+  await ask(page);
+  await complete(page);
+  await answer(page).locator('.sources summary').click();
+  await expect(answer(page).locator('.sources li')).toHaveCount(2);
+  await expect(answer(page).getByRole('link')).toHaveCount(0);
 });
 
 test('history links citations that name a saved source', async ({ page }) => {
   await signIn(page);
   await page.getByRole('button', { name: /Liveness and readiness probes/ }).first().click();
-  await expect(answer(page).getByRole('button', { name: 'Open citation S1', exact: true }).first()).toBeVisible();
-  await expect(answer(page).getByRole('button', { name: /^Open source S1/ })).toBeEnabled();
+  await expect(page.getByRole('heading', { name: 'Liveness and readiness probes' })).toBeVisible();
+  await expect(answer(page).locator('a.citation').first()).toHaveAttribute('href', /pod-lifecycle\/#container-probes$/);
+  await expect(answer(page).locator('.sources summary')).toContainText('Pod Lifecycle');
 });
 
 test('composer supports newlines, blocks over-limit input, and sends on Enter', async ({ page }) => {
@@ -313,7 +301,7 @@ test('disabled retrieval is labelled and returns an answer without sources', asy
   await expect(page.getByText('Retrieval: Disabled', { exact: true })).toBeVisible();
   await ask(page);
   await complete(page);
-  await expect(answer(page)).toContainText('No sources found');
+  await expect(answer(page).getByText('General answer', { exact: true })).toBeVisible();
 });
 
 test('missing conversation leaves the workspace usable', async ({ page }) => {
@@ -323,12 +311,11 @@ test('missing conversation leaves the workspace usable', async ({ page }) => {
   await expect(page.getByLabel('Ask about your platform')).toBeEnabled();
 });
 
-for (const endpoint of ['status', 'list', 'history', 'source', 'delete', 'signout'] as const) {
+for (const endpoint of ['status', 'list', 'history', 'delete', 'signout'] as const) {
   test(`a 401 from ${endpoint} also returns to sign-in`, async ({ page }) => {
     await signIn(page, `unauthorized-${endpoint}`, endpoint !== 'status' && endpoint !== 'list');
-    if (endpoint === 'history' || endpoint === 'source') {
+    if (endpoint === 'history') {
       await page.getByRole('button', { name: /Keeping inference traffic private/ }).first().click();
-      if (endpoint === 'source') await answer(page).getByRole('button', { name: /^Open source S1/ }).click();
     } else if (endpoint === 'delete') {
       await page.getByRole('button', { name: 'Delete Keeping inference traffic private', exact: true }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Delete conversation', exact: true }).click();
@@ -358,8 +345,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await ask(page, probeQuestion);
     await complete(page);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await answer(page).getByRole('button', { name: /^Open source S1/ }).click();
-    await expect(page.getByRole('dialog', { name: 'Source passage' })).toBeVisible();
+    await answer(page).locator('.sources summary').click();
+    await expect(answer(page).locator('.sources').getByRole('link', { name: /^Pod Lifecycle/ })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }
 

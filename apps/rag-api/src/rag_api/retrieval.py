@@ -10,6 +10,10 @@ import psycopg
 from .prompt import Passage
 
 CHUNK_ID = re.compile(r"[0-9]{1,18}-[0-9a-f]{12}-[0-9]{1,6}\Z")
+# Markdown headings may carry an explicit anchor, as in "Example {#pdb-example}".
+HEADING_ID = re.compile(r"\s*\{#([A-Za-z0-9_-]+)\}\s*$")
+# A document contributes at most this many passages, so one long page cannot fill every slot.
+PER_DOCUMENT = 2
 
 
 class RetrievalUnavailable(Exception):
@@ -39,6 +43,27 @@ class Retriever(Protocol):
     async def status(self) -> str: ...
 
 
+def clean_heading(heading_path: str) -> str:
+    """The heading path as readers see it: no explicit anchors, no code marks, no empty parts."""
+    parts = [HEADING_ID.sub("", part).replace("`", "").strip() for part in heading_path.split(" > ")]
+    return " > ".join(part for part in parts if part)
+
+
+def section_url(source_url: str, heading_path: str) -> str:
+    """The source page, at the passage's own section where its heading gives an anchor. GitHub and
+    the Kubernetes site both derive anchors from heading text the same way."""
+    last = heading_path.split(" > ")[-1].strip() if heading_path.strip() else ""
+    if not source_url or not last:
+        return source_url
+    explicit = HEADING_ID.search(last)
+    if explicit:
+        anchor = explicit.group(1)
+    else:
+        text = re.sub(r"[^\w\- ]", "", last.replace("`", "").lower())
+        anchor = text.strip().replace(" ", "-")
+    return f"{source_url}#{anchor}" if anchor else source_url
+
+
 class NoRetriever:
     """Used when no database is configured: every question gets no passages."""
 
@@ -62,7 +87,7 @@ class CorpusStore(Protocol):
 
 # Only chunks of each document's active revision, and never a retired document.
 SEARCH = """
-SELECT c.id, d.title, c.heading_path, c.text, 1 - (c.embedding <=> %(v)s::vector) AS score
+SELECT c.id, d.title, c.heading_path, c.text, 1 - (c.embedding <=> %(v)s::vector) AS score, d.source_url
 FROM chunks c JOIN documents d ON d.id = c.document_id
 WHERE NOT d.retired AND c.revision = d.active_revision
 ORDER BY c.embedding <=> %(v)s::vector
@@ -143,9 +168,23 @@ class PgVectorRetriever:
     async def retrieve(self, question: str) -> list[Passage]:
         await self._check_config()
         vector = await self.embeddings.embed(self.settings.query_prefix + question)
-        rows = await self.store.search(vector, self.settings.retrieval_top_k)
-        return [Passage(chunk_id, title, text, float(score), heading)
-                for chunk_id, title, heading, text, score in rows if score >= self.settings.similarity_floor]
+        # Extra candidates leave room for the per-document cap.
+        rows = await self.store.search(vector, self.settings.retrieval_top_k * 3)
+        # A question whose best match is weak is not about the documentation: it gets no passages,
+        # and the answer is a short general one instead of a refusal built on unrelated text.
+        if not rows or rows[0][4] < self.settings.relevance_floor:
+            return []
+        passages: list[Passage] = []
+        per_document: dict[str, int] = {}
+        for chunk_id, title, heading, text, score, url in rows:
+            document = chunk_id.split("-", 1)[0]
+            if score < self.settings.similarity_floor or per_document.get(document, 0) >= PER_DOCUMENT:
+                continue
+            per_document[document] = per_document.get(document, 0) + 1
+            passages.append(Passage(chunk_id, title, text, float(score), clean_heading(heading), section_url(url, heading)))
+            if len(passages) == self.settings.retrieval_top_k:
+                break
+        return passages
 
     async def source(self, chunk_id: str) -> Source | None:
         if not CHUNK_ID.fullmatch(chunk_id):

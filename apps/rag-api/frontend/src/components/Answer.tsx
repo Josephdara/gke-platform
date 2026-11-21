@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import type { ChatDone, Message, Source } from '../api/types';
+import type { ChatDone, Message } from '../api/types';
+import { Markdown } from './Markdown';
+import { Sources } from './Sources';
 
 export interface ChatMessage extends Message {
   id: string;
@@ -11,33 +13,23 @@ export interface ChatMessage extends Message {
 
 interface AnswerProps {
   message: ChatMessage;
-  onSource: (source: Source) => void;
   onRetry: (question: string) => void;
   retryDisabled: boolean;
   announce: (message: string) => void;
 }
 
-function AnswerText({ message, onSource }: Pick<AnswerProps, 'message' | 'onSource'>) {
-  const stored = message.sources.map((source) => source.label);
-  const valid = message.done?.citations.valid ?? (message.phase === 'finished' && !message.done ? stored : []);
-  const invalid = message.done?.citations.invalid ?? [];
-  return <div className="answer-text">{message.content.split(/(\[S\d+\])/g).map((part, index) => {
-    const match = /^\[(S\d+)\]$/.exec(part);
-    const label = match?.[1];
-    if (!label) return part;
-    if (invalid.includes(label)) return <span key={index} className="unverified">[{label}: unverified citation]</span>;
-    const source = message.sources.find((entry) => entry.label === label);
-    if (source && valid.includes(label)) return <button key={index} className="citation" onClick={() => onSource(source)} aria-label={`Open citation ${label}`}>{label}</button>;
-    return part;
-  })}</div>;
-}
-
-export function Answer({ message, onSource, onRetry, retryDisabled, announce }: AnswerProps) {
+export function Answer({ message, onRetry, retryDisabled, announce }: AnswerProps) {
   const [copied, setCopied] = useState(false);
   const finished = message.phase !== 'waiting' && message.phase !== 'streaming';
+  // A saved answer that finished has no citation check of its own; its stored labels stand in.
+  // A stopped or failed answer was never checked, so its citations stay plain text.
+  const checked = finished && (message.status === 'complete' || message.status === 'length');
+  const valid = message.done?.citations.valid ?? (checked ? message.sources.map((source) => source.label) : []);
+  const invalid = message.done?.citations.invalid ?? [];
   const status = message.status === 'cancelled' ? 'Stopped' : message.status === 'failed' ? 'Incomplete'
     : message.status === 'length' ? 'Length limit reached' : 'Complete';
-  const unshownInvalid = message.done?.citations.invalid.filter((label) => !message.content.includes(`[${label}]`)) ?? [];
+  const unshownInvalid = invalid.filter((label) => !message.content.includes(`[${label}]`));
+  const mode = message.sources.length > 0 ? 'From your documentation' : 'General answer';
   async function copy() {
     try {
       await navigator.clipboard.writeText(message.content);
@@ -47,18 +39,13 @@ export function Answer({ message, onSource, onRetry, retryDisabled, announce }: 
   }
 
   return <article className="answer" aria-label="Assistant answer">
-    <div className="answer-heading"><span className="assistant-avatar" aria-hidden="true">P</span><span>Platform Assistant</span><span className="answer-tag">DOCUMENTATION</span></div>
+    <div className="answer-heading"><span className="assistant-avatar" aria-hidden="true">P</span><span>Platform Assistant</span>
+      {message.content && <span className={`answer-tag ${message.sources.length ? '' : 'general'}`}>{mode}</span>}</div>
     {message.phase === 'waiting' && <div className="thinking"><span className="thinking-indicator" aria-hidden="true" /><p>Searching the documentation, then thinking...</p><span className="muted">This can take a few seconds.</span></div>}
-    {message.content && <AnswerText message={message} onSource={onSource} />}
+    {message.content && <Markdown content={message.content} sources={message.sources} valid={valid} invalid={invalid} />}
     {message.phase === 'streaming' && <span className="stream-indicator" aria-label="Answer is streaming" />}
     {unshownInvalid.map((label) => <p key={label} className="unverified">{label}: unverified citation</p>)}
-    {message.sources.length > 0 && <section className="sources" aria-label="Answer sources">
-      <h3>Sources <span>{message.sources.length}</span></h3>
-      <div className="source-grid">{message.sources.map((source) => <button type="button" className="source-card" key={source.chunkId} onClick={() => onSource(source)} aria-label={`Open source ${source.label}: ${source.title}`}>
-        <span className="source-label">{source.label}</span><span><strong>{source.title}</strong><small>{source.headingPath}</small></span>
-      </button>)}</div>
-    </section>}
-    {finished && message.sources.length === 0 && message.status === 'complete' && <p className="notice">No sources found for this answer.</p>}
+    {finished && message.sources.length > 0 && <Sources sources={message.sources} cited={valid.filter((label) => message.content.includes(`[${label}]`))} />}
     {finished && <div className="answer-footer">
       <span className={message.status === 'complete' ? 'completion' : 'completion attention'}>{status}</span>
       {message.content && <button type="button" className="text-button" onClick={() => { void copy(); }}>{copied ? 'Copied' : 'Copy answer'}</button>}

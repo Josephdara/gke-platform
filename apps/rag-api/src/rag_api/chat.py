@@ -121,6 +121,11 @@ async def chat(request: Request, body: ChatRequest):
     return StreamingResponse(stream, media_type="text/event-stream", headers={"Cache-Control": "no-store"})
 
 
+def source_list(fitted: FittedPrompt) -> list[dict]:
+    return [{"label": f"S{n}", "chunkId": p.chunk_id, "title": p.title, "headingPath": p.heading_path,
+             "url": p.url, "score": round(p.score, 4)} for n, p in enumerate(fitted.passages, start=1)]
+
+
 async def bounded(events: AsyncIterator, stall_seconds: float, deadline: float) -> AsyncIterator:
     """Yields upstream events, failing when one takes longer than the stall timeout or the deadline.
 
@@ -166,11 +171,9 @@ async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: f
             "conversationId": conversation_id,
             "promptVersion": PROMPT_VERSION,
             "model": backend.model_info().get("alias"),
-            "sources": [
-                {"label": f"S{n}", "chunkId": p.chunk_id, "title": p.title, "headingPath": p.heading_path,
-                 "score": round(p.score, 4)}
-                for n, p in enumerate(fitted.passages, start=1)
-            ],
+            # documentation: grounded in the sources below; general: no passage was relevant.
+            "mode": "documentation" if fitted.passages else "general",
+            "sources": source_list(fitted),
         })
         try:
             async for event in guarded:
@@ -229,10 +232,8 @@ async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: f
         RAG_GENERATED_TOKENS.inc(generated)
         RAG_REQUESTS.labels(outcome).inc()
         RAG_COMPLETION.observe(time.monotonic() - started)
-        # The answer is saved however the stream ended, with the passages' text, so it still
-        # shows its sources after a document is retired.
-        sources = [{"label": f"S{n}", "chunkId": p.chunk_id, "title": p.title, "headingPath": p.heading_path,
-                    "score": round(p.score, 4), "text": p.text} for n, p in enumerate(fitted.passages, start=1)]
+        # The answer is saved however the stream ended, with its sources' titles and links.
+        sources = source_list(fitted)
         try:
             with anyio.CancelScope(shield=True):
                 await state.conversations.add_message(username, conversation_id, StoredMessage(

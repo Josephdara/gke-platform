@@ -4,11 +4,10 @@ import { ApiError, isAbort } from './api/client';
 import { isMock } from './api';
 import type { AssistantApi } from './api/client';
 import { QUESTION_LIMIT } from './api/types';
-import type { ChatError, ConversationSummary, Source, StatusResponse } from './api/types';
+import type { ChatError, ConversationSummary, StatusResponse } from './api/types';
 import { Answer } from './components/Answer';
 import type { ChatMessage } from './components/Answer';
 import { Dialog } from './components/Dialog';
-import { Passage } from './components/Passage';
 import { Sidebar } from './components/Sidebar';
 import { SignIn } from './components/SignIn';
 import { useCountdown } from './hooks';
@@ -102,7 +101,6 @@ function Workspace({ api, username, onUnauthorized, onSignedOut, announce }: Wor
   const [mobileOpen, setMobileOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationSummary | null>(null);
   const [retryQuestion, setRetryQuestion] = useState<string | null>(null);
-  const [source, setSource] = useState<Source | null>(null);
   const stream = useRef<AbortController | null>(null);
   const mounted = useRef(false);
   const requests = useRef(new Set<AbortController>());
@@ -111,6 +109,8 @@ function Workspace({ api, username, onUnauthorized, onSignedOut, announce }: Wor
   const newChatFocus = useRef<HTMLButtonElement>(null);
   const scrollPane = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  // Set when a saved conversation opens, so the view starts at its last question, not its end.
+  const showLastQuestion = useRef(false);
   const blocked = loading || historyLoading || signingOut || deleting;
   const selectedTitle = conversations.find((entry) => entry.id === selectedId)?.title ?? 'New conversation';
 
@@ -145,7 +145,13 @@ function Workspace({ api, username, onUnauthorized, onSignedOut, announce }: Wor
 
   useEffect(() => {
     const pane = scrollPane.current;
-    if (pane && stickToBottom.current) pane.scrollTop = pane.scrollHeight;
+    if (!pane) return;
+    const questions = pane.querySelectorAll('.user-message');
+    const last = questions[questions.length - 1];
+    if (showLastQuestion.current && last) {
+      showLastQuestion.current = false;
+      pane.scrollTop += last.getBoundingClientRect().top - pane.getBoundingClientRect().top - 16;
+    } else if (stickToBottom.current) pane.scrollTop = pane.scrollHeight;
   }, [messages]);
 
   function newRequest() {
@@ -192,7 +198,8 @@ function Workspace({ api, username, onUnauthorized, onSignedOut, announce }: Wor
       if (controller.signal.aborted) return;
       setSelectedId(conversation.id);
       setQuestion('');
-      stickToBottom.current = true;
+      stickToBottom.current = false;
+      showLastQuestion.current = true;
       setMessages(conversation.messages.map((message) => ({ ...message, id: crypto.randomUUID(), phase: 'finished' })));
       announce(`Loaded conversation: ${conversation.title}.`);
     } catch (error) { if (!controller.signal.aborted) handleFailure(error); }
@@ -331,8 +338,8 @@ function Workspace({ api, username, onUnauthorized, onSignedOut, announce }: Wor
       <a className="brand" href="#question"><span className="brand-mark" aria-hidden="true">P</span><span>Platform Assistant</span></a>
       <span className="workspace-type">Documentation workspace</span>
       <div className="system-status" aria-label="Platform status">
-        <span className={`status-item ${status?.model.status === 'ok' ? 'healthy' : ''}`}><i aria-hidden="true" />Model: {status ? status.model.status === 'ok' ? 'Ready' : 'Unavailable' : 'Loading'}</span>
-        <span className={`status-item ${status?.retrieval.status === 'ok' ? 'healthy' : ''}`}><i aria-hidden="true" />Retrieval: {retrievalLabel}</span>
+        <span className={`status-item ${status?.model.status === 'ok' ? 'healthy' : ''}`}><i aria-hidden="true" /><span className="status-text">Model: {status ? status.model.status === 'ok' ? 'Ready' : 'Unavailable' : 'Loading'}</span></span>
+        <span className={`status-item ${status?.retrieval.status === 'ok' ? 'healthy' : ''}`}><i aria-hidden="true" /><span className="status-text">Retrieval: {retrievalLabel}</span></span>
       </div>
       <button className="button quiet sign-out" disabled={signingOut} onClick={() => { void signOut(); }}>{signingOut ? 'Signing out...' : 'Sign out'}</button>
     </header>
@@ -340,7 +347,7 @@ function Workspace({ api, username, onUnauthorized, onSignedOut, announce }: Wor
     <main className="chat-main" aria-labelledby="conversation-title">
       <div className="chat-toolbar">
         <button type="button" ref={newChatFocus} className="button secondary mobile-menu" onClick={() => setMobileOpen(true)}>Conversations</button>
-        <div><span className="small-label toolbar-label">WORKSPACE</span><h1 id="conversation-title">{selectedTitle}</h1></div>
+        <h1 id="conversation-title">{selectedTitle}</h1>
         {isMock && <span className="mock-badge toolbar-demo">MOCK DATA</span>}
       </div>
       <div className="notices">
@@ -362,11 +369,11 @@ function Workspace({ api, username, onUnauthorized, onSignedOut, announce }: Wor
             <p className="intro">From probes to policies, get answers grounded in platform documentation. Follow the sources to see how it all fits together.</p>
             <p className="suggestion-heading">A few good places to start</p>
             <div className="suggestion-grid">{suggestions.map((suggestion) => <button type="button" key={suggestion.topic} className="suggestion" disabled={blocked || !status || remaining > 0} onClick={() => { void send(suggestion.question); }}><span>{suggestion.topic}</span><strong>{suggestion.question}</strong></button>)}</div>
-            <p className="empty-note">{isMock ? 'Sample documentation. Clear sources. You stay in control.' : 'Every answer lists the passages it drew on. You stay in control.'}</p>
+            <p className="empty-note">{isMock ? 'Sample documentation. Clear sources. You stay in control.' : 'Answers link to the documentation they draw on. You stay in control.'}</p>
           </section>
             : <div className="messages">{messages.map((message) => message.role === 'user'
               ? <article key={message.id} className="user-message" aria-label="Your question"><span>You</span><p>{message.content}</p></article>
-              : <Answer key={message.id} message={message} onSource={setSource} onRetry={setRetryQuestion} retryDisabled={streaming || blocked || remaining > 0} announce={announce} />)}</div>}
+              : <Answer key={message.id} message={message} onRetry={setRetryQuestion} retryDisabled={streaming || blocked || remaining > 0} announce={announce} />)}</div>}
       </div>
       <div className="composer-area">
         <form className={`composer ${question.length > QUESTION_LIMIT ? 'over-limit' : ''}`} onSubmit={submit}>
@@ -390,7 +397,6 @@ function Workspace({ api, username, onUnauthorized, onSignedOut, announce }: Wor
       </div>
     </main>
     {mobileOpen && <Dialog title="Conversations" drawer onClose={() => setMobileOpen(false)}><Sidebar {...sidebarProps} /></Dialog>}
-    {source && <Passage key={source.chunkId} api={api} source={source} onClose={() => setSource(null)} onUnauthorized={onUnauthorized} announce={announce} />}
     {deleteTarget && <Dialog title="Delete conversation?" onClose={() => setDeleteTarget(null)} fallbackFocus={() => { composer.current?.focus(); }}>
       <p>Delete “{deleteTarget.title}” and its messages? This cannot be undone.</p>
       <div className="dialog-actions"><button className="button secondary" onClick={() => setDeleteTarget(null)}>Cancel</button><button className="button danger" disabled={deleting} onClick={() => { void deleteConversation(); }}>{deleting ? 'Deleting...' : 'Delete conversation'}</button></div>

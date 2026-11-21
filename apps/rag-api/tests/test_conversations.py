@@ -27,8 +27,7 @@ def test_an_answer_is_saved_with_its_status_and_sources(make_app, model):
     user, assistant = saved["messages"]
     assert (user["role"], user["content"], user["status"]) == ("user", "Why do Pods restart?", "complete")
     assert (assistant["role"], assistant["content"], assistant["status"]) == ("assistant", "Pods restart [S1].", "complete")
-    # The passage text is kept, so the answer still shows it after the document is retired.
-    assert assistant["sources"][0]["text"] == PASSAGES[0].text and assistant["sources"][0]["label"] == "S1"
+    assert (assistant["sources"][0]["label"], assistant["sources"][0]["title"]) == ("S1", PASSAGES[0].title)
 
 
 def test_a_follow_up_uses_the_stored_history_not_the_client(make_app, model):
