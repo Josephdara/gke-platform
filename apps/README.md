@@ -7,6 +7,7 @@ These are the services the platform deploys. Each service has its own README wit
 | [`platform-verification-api/`](platform-verification-api/) | FastAPI service I use to verify deployment, health, configuration, and logging. See its [README](platform-verification-api/README.md) |
 | [`rag-api/`](rag-api/) | FastAPI service that answers questions from retrieved passages, streams the answer as server-sent events, keeps each user's conversations, and serves the web interface in [`rag-api/frontend/`](rag-api/frontend/README.md). See its [README](rag-api/README.md) |
 | [`ingest/`](ingest/) | Batch job that verifies the corpus, chunks and embeds changed documents, and loads them into pgvector. See its [README](ingest/README.md) |
+| [`loadgen/`](loadgen/) | Client that streams questions through the assistant for release tests and the [evaluation set](../eval/questions.yaml). See its [README](loadgen/README.md) |
 | [`compose.yaml`](compose.yaml) | The assistant on one machine: pgvector, the embeddings server, ingest, the chat model, and rag-api with the frontend, with the cluster's users and read-only filesystems. See the [rag-api README](rag-api/README.md#running-it-locally) |
 
 ## Testing the Python service

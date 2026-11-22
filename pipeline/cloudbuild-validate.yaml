@@ -38,6 +38,19 @@ steps:
         /workspace/.venv-ingest/bin/python -m pytest
         /workspace/.venv-ingest/bin/python -m pip check
 
+  - id: test-loadgen
+    name: python:3.14.10-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b
+    dir: apps/loadgen
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        python -m venv /workspace/.venv-loadgen
+        /workspace/.venv-loadgen/bin/python -m pip install --disable-pip-version-check -r requirements-test.txt
+        /workspace/.venv-loadgen/bin/python -m pytest
+        /workspace/.venv-loadgen/bin/python -m pip check
+
   - id: build
     name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
     args: [build, --platform, linux/amd64, -t, "${_IMAGE}:sha-${SHORT_SHA}", apps/platform-verification-api]

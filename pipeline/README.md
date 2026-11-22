@@ -27,7 +27,7 @@ Both triggers run in `us-east4` on the `staging-github` connection, which links 
 | Step | Validate | Publish | What it does |
 | --- | --- | --- | --- |
 | `test` | Yes | Yes | Installs `requirements-test.txt` in the image's own Python and runs `pytest` and `pip check` |
-| `test-rag-api`, `test-ingest` | Yes | No | The same for [`apps/rag-api`](../apps/rag-api/README.md) and [`apps/ingest`](../apps/ingest/README.md). In a publish build, `test` runs the published application's own tests |
+| `test-rag-api`, `test-ingest`, `test-loadgen` | Yes | No | The same for [`apps/rag-api`](../apps/rag-api/README.md), [`apps/ingest`](../apps/ingest/README.md), and [`apps/loadgen`](../apps/loadgen/README.md). In a publish build, `test` runs the published application's own tests |
 | `build-rag-api`, `scan-rag-api`, `build-ingest`, `scan-ingest` and their exports | Yes | No | Build and scan the other two images on every pull request, with the same gate, so a vulnerable image fails the pull request rather than the publish |
 | `frontend-lint` | Yes | No | ESLint, the TypeScript check, and the production build of [the frontend](../apps/rag-api/frontend/README.md), with Node 26 |
 | `build` | Yes | Yes | Builds the image for `linux/amd64` and tags it `sha-<short commit>` |
@@ -101,7 +101,7 @@ Accepted findings still appear in `scan.json`, marked as suppressed.
 
 ## Updating the base image
 
-The base image digest is pinned in nine places, and they must always match: the `FROM` line in the API's and ingest's Dockerfiles, the `test` step in both build files, and the `test-rag-api`, `test-ingest`, `tools`, `chart`, and `terraform` steps in the validate build. This lists them:
+The base image digest is pinned in eleven places, and they must always match: the `FROM` line in the API's, rag-api's, and ingest's Dockerfiles, the `test` step in both build files, and the `test-rag-api`, `test-ingest`, `test-loadgen`, `tools`, `chart`, and `terraform` steps in the validate build. This lists them:
 
 ```sh
 git grep -n "python:3.14.10-slim-bookworm@sha256"

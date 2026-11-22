@@ -466,9 +466,75 @@ kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference wait --for=condition=comp
 kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference logs "job/$JOB" --tail=1
 ```
 
-The last line is the run's report: every document `new` on a fresh database, and no failures.
+The last line is the run's report: every document `new` on a fresh database, and no failures. A full load takes about 10 minutes, because the embeddings server runs on CPU.
 
 **3. Open** `https://assistant.staging.<your domain>/` and sign in with an account from `$ENVIRONMENT-rag-api-users`. The status bar shows the model and retrieval as ready. The first answer after the inference node starts can take a few minutes; later ones start streaming in seconds.
+
+### Evaluate the assistant and release under load
+
+These steps use [loadgen](apps/loadgen/README.md) from your machine, against the public site. Install it once:
+
+```bash
+python3 -m venv apps/loadgen/.venv
+apps/loadgen/.venv/bin/python -m pip install -r apps/loadgen/requirements.txt -e apps/loadgen
+```
+
+Set these in the terminal you run it from. **Replace each `YOUR_` value with your own.** The account must have `rateLimitExempt` set in `$ENVIRONMENT-rag-api-users`, and the password file must hold only its password, outside the repository:
+
+```bash
+export ASSISTANT_URL=https://assistant.$ENVIRONMENT.$DNS_ZONE_NAME
+export BENCH_USER=YOUR_EXEMPT_USERNAME BENCH_PASSWORD_FILE=YOUR_PASSWORD_FILE
+loadgen() { apps/loadgen/.venv/bin/loadgen "$1" --url "$ASSISTANT_URL" --username "$BENCH_USER" --password-file "$BENCH_PASSWORD_FILE" --questions eval/questions.yaml "${@:2}"; }
+```
+
+Results go under `infra/private/`, which Git ignores, and then to the evidence bucket.
+
+**1. Measure a baseline** with no release running: two requests in flight for 5 minutes.
+
+```bash
+loadgen load --concurrency 2 --duration 300 --out infra/private/load-baseline-$(date -u +%H%M)
+```
+
+**2. Release under load.** A release is a merged pull request that changes the rag-api digest in [`values-staging.yaml`](platform/services/rag-api/values-staging.yaml). Open it and let its checks pass before you start. Then start a 15-minute load in one terminal:
+
+```bash
+loadgen load --concurrency 2 --duration 900 --out infra/private/load-release-$(date -u +%H%M)
+```
+
+In a second terminal, merge the pull request, then wait for Argo CD to change the Deployment and for the rollout to finish. `DIGEST` is the digest the pull request sets:
+
+```bash
+DIGEST=YOUR_NEW_DIGEST; date -u
+until kubectl --context "$CONTEXT" -n $ENVIRONMENT get deployment $ENVIRONMENT-rag-api -o jsonpath='{.spec.template.spec.containers[0].image}' | grep -q "$DIGEST"; do sleep 5; done; date -u
+kubectl --context "$CONTEXT" -n $ENVIRONMENT rollout status deployment/$ENVIRONMENT-rag-api --timeout=900s; date -u
+```
+
+The three times are the merge, Argo CD applying the change, and the last new Pod ready. Argo CD checks Git every 3 minutes, so most of the first gap is that wait. Leave the load running until it ends on its own.
+
+**3. Check the release.** The load's `summary.json` lists every request that did not end with an answer. For each one, find the Pod that served it and when:
+
+```bash
+gcloud logging read "resource.type=\"k8s_container\" AND jsonPayload.request_id=\"REQUEST_ID\"" --project="$PROJECT_ID" --freshness=1d --format="value(timestamp,resource.labels.pod_name,jsonPayload.event,jsonPayload.outcome)"
+kubectl --context "$CONTEXT" -n $ENVIRONMENT get events --field-selector reason=Killing --sort-by=.lastTimestamp
+```
+
+A request that reached a Pod after its preStop ended, which is 10 seconds after the `Killing` event, means the load balancer was still sending traffic to it: raise `shutdown.preStopSeconds` in [`values.yaml`](platform/services/rag-api/values.yaml) and repeat the release.
+
+**4. Roll back under load.** Revert the release's merge commit on a branch, open a pull request, let its checks pass, and repeat steps 2 and 3 with the previous digest. Reverting the revert releases the change again.
+
+**5. Run the evaluation** on the version you are keeping, with no load running:
+
+```bash
+loadgen eval --out infra/private/eval-$(date -u +%F)
+```
+
+Review the answers in `review.md` and set each verdict in `results.json`, as the [loadgen README](apps/loadgen/README.md#scoring-the-evaluation) describes.
+
+**6. Keep the results** in the evidence bucket:
+
+```bash
+for run in infra/private/load-* infra/private/eval-*; do gcloud storage cp -r "$run" "gs://$PROJECT_ID-$ENVIRONMENT-build-evidence/inference/$(basename "$run" | cut -d- -f1)/$(date -u +%F)/"; done
+```
 
 ### End a session
 

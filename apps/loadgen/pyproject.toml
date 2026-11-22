@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loadgen"
+version = "0.1.0"
+description = "Streams questions through the assistant for load tests and the evaluation set"
+requires-python = ">=3.12"
+dependencies = ["httpx==0.28.1", "PyYAML==6.0.3"]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[project.scripts]
+loadgen = "loadgen.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
