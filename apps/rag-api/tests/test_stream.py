@@ -34,7 +34,7 @@ def test_normal_stream_ends_with_one_done_event(make_app, model):
 def test_the_model_is_always_sent_the_output_limit(make_app, model):
     ask(make_app(model))
     body, = model.chat_bodies
-    assert body["max_tokens"] == 384
+    assert body["max_tokens"] == 384 and body["temperature"] == 0
     assert body["stream"] is True
     assert body["messages"][0]["role"] == "system"
 

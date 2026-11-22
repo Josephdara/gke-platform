@@ -105,6 +105,8 @@ class LlamaCppBackend:
             "stream": True,
             # The server treats its own output limit only as a default, so every request sets one.
             "max_tokens": max_tokens,
+            # Greedy decoding keeps answers close to the passages, and lets an evaluation be repeated.
+            "temperature": 0,
             "cache_prompt": True,
         }
         try:
