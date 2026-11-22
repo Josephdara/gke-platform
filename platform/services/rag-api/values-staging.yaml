@@ -3,8 +3,8 @@ environment: staging
 
 image:
   repository: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/rag-api
-  digest: "sha256:d963ca08e7b9c32787570c01ff37fd4641db1f1e842bdf3d0ee85e1d9e2c016c"
-releaseVersion: "sha-aaa0a4c"
+  digest: "sha256:a56be370a55d24fc83eaedc2dc4ef8fd6ebaf603d78bab86db8b15df324d522b"
+releaseVersion: "sha-654a370"
 
 config:
   MODEL_URL: http://staging-llm-cpu.staging-inference.svc.cluster.local:8080
