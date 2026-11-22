@@ -1,7 +1,7 @@
 import type {
   ApiErrorDetail, ChatEvent, ChatRequest, CurrentSession, ConversationRequest, ConversationResponse,
   ConversationsResponse, DeleteConversationRequest, DeleteConversationResponse,
-  DeleteSessionResponse, SessionRequest, SessionResponse, SourceRequest, SourceResponse,
+  DeleteSessionResponse, SessionRequest, SessionResponse,
   StatusResponse,
 } from './types';
 
@@ -35,8 +35,6 @@ export interface AssistantApi {
   getConversation(request: ConversationRequest, signal: AbortSignal): Promise<ConversationResponse>;
   /** DELETE /api/conversations/{id} */
   deleteConversation(request: DeleteConversationRequest, signal: AbortSignal): Promise<DeleteConversationResponse>;
-  /** GET /api/sources/{chunkId} */
-  getSource(request: SourceRequest, signal: AbortSignal): Promise<SourceResponse>;
   /** POST /api/chat. Abort must cancel reading and close the underlying connection. */
   chat(request: ChatRequest, signal: AbortSignal): AsyncIterable<ChatEvent>;
 }

@@ -1,19 +1,19 @@
 import { ApiError } from './client';
 import type { AssistantApi } from './client';
-import { networkAnswer, passages, probeAnswer, probeSources, seedConversations, sources } from './fixtures';
+import { generalAnswer, networkAnswer, probeAnswer, probeSources, seedConversations, sources } from './fixtures';
 import { QUESTION_LIMIT } from './types';
 import type {
   ChatEvent, ChatRequest, ConversationRequest, CurrentSession, ConversationResponse, ConversationSummary,
-  Message, SessionRequest, SourceRequest, StatusResponse,
+  Message, SessionRequest, StatusResponse,
 } from './types';
 
 export const scenarios = [
   'default', 'loading', 'no-sources', 'unauthorized', 'rate-limited', 'busy',
   'model-unavailable', 'retrieval-unavailable', 'length', 'partial-failure',
-  'stream-failure', 'stream-model-unavailable', 'deadline', 'stalled', 'retired-source', 'invalid-citations',
+  'stream-failure', 'stream-model-unavailable', 'deadline', 'stalled', 'invalid-citations',
   'sign-in-rate-limited', 'retrieval-mismatch', 'retrieval-disabled', 'upstream-failed',
   'question-empty', 'question-too-long', 'conversation-not-found', 'unsafe-source',
-  'unauthorized-source', 'unauthorized-history', 'unauthorized-delete',
+  'unauthorized-history', 'unauthorized-delete',
   'unauthorized-signout', 'unauthorized-status', 'unauthorized-list',
 ] as const;
 type Scenario = typeof scenarios[number];
@@ -96,7 +96,7 @@ export class MockAssistantApi implements AssistantApi {
       : this.scenario === 'retrieval-disabled' ? 'disabled' : 'ok';
     return {
       model: { runtime: 'llama.cpp', alias: 'Qwen2.5-1.5B-Instruct', status: this.scenario === 'model-unavailable' ? 'unavailable' : 'ok' },
-      retrieval: { status: retrieval }, promptVersion: 'platform-v1',
+      retrieval: { status: retrieval }, promptVersion: 'grounded-v2',
       admission: { active: this.scenario === 'busy' ? 3 : 0, limit: 3 },
     };
   }
@@ -121,15 +121,6 @@ export class MockAssistantApi implements AssistantApi {
     if (!this.conversations.has(id)) throw new ApiError(404, 'not_found');
     this.conversations.delete(id);
     this.summaries = this.summaries.filter((conversation) => conversation.id !== id);
-  }
-
-  async getSource({ chunkId }: SourceRequest, signal: AbortSignal) {
-    await delay(450, signal);
-    this.requireSession('source');
-    const passage = passages[chunkId];
-    if (!passage || this.scenario === 'retired-source') throw new ApiError(404, 'not_found');
-    return structuredClone(this.scenario === 'unsafe-source'
-      ? { ...passage, sourceUrl: 'javascript:alert("untrusted")' } : passage);
   }
 
   async *chat(request: ChatRequest, signal: AbortSignal): AsyncIterable<ChatEvent> {
@@ -162,7 +153,8 @@ export class MockAssistantApi implements AssistantApi {
     }
     const isProbe = /liveness|readiness|probe/i.test(request.question);
     const noSources = this.scenario === 'no-sources' || this.scenario === 'retrieval-disabled';
-    const selectedSources = structuredClone(noSources ? [] : isProbe ? probeSources : sources);
+    const selectedSources = structuredClone(noSources ? [] : isProbe ? probeSources : sources)
+      .map((source) => this.scenario === 'unsafe-source' ? { ...source, url: 'javascript:alert("untrusted")' } : source);
     const assistant: Message = { role: 'assistant', content: '', status: 'cancelled', sources: selectedSources };
     conversation.messages.push({ role: 'user', content: request.question, status: 'complete', sources: [] }, assistant);
     const summary = this.summaries.find((entry) => entry.id === id);
@@ -171,8 +163,8 @@ export class MockAssistantApi implements AssistantApi {
     let terminal = false;
     try {
       yield { event: 'meta', data: {
-        requestId: crypto.randomUUID(), promptVersion: 'platform-v1', model: 'Qwen2.5-1.5B-Instruct',
-        conversationId: id, sources: selectedSources,
+        requestId: crypto.randomUUID(), promptVersion: 'grounded-v2', model: 'Qwen2.5-1.5B-Instruct',
+        conversationId: id, mode: noSources ? 'general' : 'documentation', sources: selectedSources,
       } };
       await delay(this.scenario === 'loading' ? 7_600 : 3_200, signal);
       if (this.scenario === 'stream-failure') {
@@ -182,7 +174,7 @@ export class MockAssistantApi implements AssistantApi {
         return;
       }
       const answer = noSources
-        ? 'I could not find a supporting passage for this question. Try asking about liveness probes or inference network isolation. I cannot provide a grounded answer without a matching source.'
+        ? generalAnswer
         : (isProbe ? probeAnswer : networkAnswer) + (this.scenario === 'invalid-citations'
           ? '\n\nUnverified example: a guarantee that is not supported by these sources. [S9]\nLiteral model text: <script>alert("demo")</script>' : '');
       const tokens = answer.match(/\S+\s*/g) ?? [];

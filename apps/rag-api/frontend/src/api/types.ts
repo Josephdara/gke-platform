@@ -5,10 +5,13 @@ export interface Source {
   chunkId: string;
   title: string;
   headingPath: string;
+  /** The source page at the passage's section. Answers saved before links existed have none. */
+  url?: string;
   score: number;
-  /** Saved conversations keep the passage text, so it survives the document being retired. */
-  text?: string;
 }
+
+/** documentation: grounded in the sources; general: no documentation matched the question. */
+export type AnswerMode = 'documentation' | 'general';
 
 export interface SessionRequest { username: string; password: string }
 export interface CurrentSession { username: string }
@@ -38,17 +41,6 @@ export interface Message {
 export interface ConversationResponse { id: string; title: string; messages: Message[] }
 export type DeleteConversationRequest = ConversationRequest;
 export type DeleteConversationResponse = void;
-export interface SourceRequest { chunkId: string }
-export interface SourceResponse {
-  chunkId: string;
-  documentTitle: string;
-  headingPath: string;
-  text: string;
-  sourceUrl: string;
-  license: string;
-  attribution: string;
-}
-
 export interface ChatRequest { question: string; conversationId?: string }
 export type ChatRejection =
   | { status: 422; body: { detail: 'question_too_long' | 'question_empty' } }
@@ -61,6 +53,7 @@ export interface ChatMeta {
   promptVersion: string;
   model: string;
   conversationId: string;
+  mode: AnswerMode;
   sources: Source[];
 }
 export interface ChatToken { text: string }

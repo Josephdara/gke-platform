@@ -57,7 +57,8 @@ def test_errors_do_not_echo_values():
 
 def test_retrieval_is_off_without_a_database():
     settings = Settings.from_env(BASE)
-    assert (settings.database_host, settings.embeddings_url, settings.similarity_floor) == (None, None, 0.0)
+    assert (settings.database_host, settings.embeddings_url) == (None, None)
+    assert (settings.relevance_floor, settings.similarity_floor) == (0.65, 0.60)
     assert (settings.database_user, settings.retrieval_top_k) == ("rag_api", 5)
 
 
@@ -69,7 +70,7 @@ def test_a_database_needs_its_password_and_the_embeddings_server(missing):
         Settings.from_env(env)
 
 
-@pytest.mark.parametrize("field, value", [("SIMILARITY_FLOOR", "1.5"), ("SIMILARITY_FLOOR", "high"), ("RETRIEVAL_TOP_K", "6")])
+@pytest.mark.parametrize("field, value", [("SIMILARITY_FLOOR", "1.5"), ("RELEVANCE_FLOOR", "high"), ("RETRIEVAL_TOP_K", "6")])
 def test_invalid_retrieval_settings(field, value):
     with pytest.raises(ConfigurationError, match=field):
         Settings.from_env({**BASE, field: value})

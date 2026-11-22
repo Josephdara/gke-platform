@@ -43,8 +43,12 @@ class Settings:
     database_password_file: str | None = None
     embeddings_url: str | None = None
     retrieval_top_k: int = 5
-    # Passages scoring below this cosine similarity are dropped. 0 keeps every top-k passage.
-    similarity_floor: float = 0.0
+    # Cosine similarities measured with bge-small on this corpus: off-topic messages ("ping",
+    # "write me a poem") score at most 0.60 at best, documentation questions at least 0.69.
+    # A question whose best passage is below relevance_floor gets no passages and a general
+    # answer; below similarity_floor, a single passage is dropped.
+    relevance_floor: float = 0.65
+    similarity_floor: float = 0.60
     # bge-small-en-v1.5's instruction for short queries that retrieve longer passages.
     query_prefix: str = "Represent this sentence for searching relevant passages: "
     embedding_model: str = "bge-small-en-v1.5"
@@ -108,13 +112,14 @@ class Settings:
         if secure == "true" and scheme != "https":
             raise ConfigurationError("COOKIE_SECURE=true needs an https ALLOWED_ORIGIN")
 
-        floor_text = text("SIMILARITY_FLOOR", "0")
-        try:
-            similarity_floor = float(floor_text)
-        except ValueError:
-            similarity_floor = -1.0
-        if not 0.0 <= similarity_floor < 1.0:
-            raise ConfigurationError("SIMILARITY_FLOOR must be a number from 0 up to 1")
+        def fraction(name: str, default: str) -> float:
+            try:
+                value = float(text(name, default))
+            except ValueError:
+                value = -1.0
+            if not 0.0 <= value < 1.0:
+                raise ConfigurationError(f"{name} must be a number from 0 up to 1")
+            return value
 
         settings = cls(
             environment=text("ENVIRONMENT"),
@@ -149,7 +154,8 @@ class Settings:
             database_password_file=database_password_file,
             embeddings_url=embeddings_url,
             retrieval_top_k=integer("RETRIEVAL_TOP_K", 5, 1, 5),
-            similarity_floor=similarity_floor,
+            relevance_floor=fraction("RELEVANCE_FLOOR", "0.65"),
+            similarity_floor=fraction("SIMILARITY_FLOOR", "0.60"),
         )
         if settings.output_tokens + settings.passage_tokens >= settings.context_tokens:
             raise ConfigurationError("OUTPUT_TOKENS plus PASSAGE_TOKENS must be less than CONTEXT_TOKENS")

@@ -7,18 +7,23 @@ import pytest
 
 from rag_api.app import create_app
 from rag_api.logging import create_logger
+from rag_api.prompt import GENERAL_PROMPT
 from rag_api.retrieval import (
-    EmbeddingConfigMismatch, PgCorpusStore, PgVectorRetriever, RetrievalUnavailable, TeiEmbeddings,
+    EmbeddingConfigMismatch, PgCorpusStore, PgVectorRetriever, RetrievalUnavailable, TeiEmbeddings, clean_heading,
+    section_url,
 )
 
 from conftest import parse_events, signed_in
 from fake_model import FakeModelServer
 
 EXPECTED = ("bge-small-en-v1.5", "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a", 384)
+K8S = "https://kubernetes.io/docs/"
 ROWS = [
-    ("7-0123456789ab-0", "Probes", "Liveness", "A failing liveness probe restarts the container.", 0.82),
-    ("9-0123456789ab-2", "Deployments", "Rollouts", "A Deployment replaces Pods during a rollout.", 0.61),
-    ("3-0123456789ab-1", "Services", "", "A Service gives Pods a stable address.", 0.12),
+    ("7-0123456789ab-0", "Probes", "Liveness", "A failing liveness probe restarts the container.", 0.82, K8S + "probes/"),
+    ("7-0123456789ab-1", "Probes", "Readiness", "A failing readiness probe removes the Pod from endpoints.", 0.80, K8S + "probes/"),
+    ("7-0123456789ab-2", "Probes", "Startup", "A startup probe delays the other probes.", 0.79, K8S + "probes/"),
+    ("9-0123456789ab-2", "Deployments", "Rollouts", "A Deployment replaces Pods during a rollout.", 0.61, K8S + "deployment/"),
+    ("3-0123456789ab-1", "Services", "", "A Service gives Pods a stable address.", 0.12, K8S + "service/"),
 ]
 SOURCE = ("7-0123456789ab-0", "Probes", "Liveness", "A failing liveness probe restarts the container.",
           "https://kubernetes.io/docs/probes/", "CC BY 4.0", "The Kubernetes Authors")
@@ -53,18 +58,34 @@ def embeddings(healthy=True, seen=None):
     return TeiEmbeddings(httpx.AsyncClient(transport=httpx.MockTransport(handle), base_url="http://tei"), 384)
 
 
-@pytest.fixture
-def retrieval_settings(settings):
-    return settings.__class__(**{**settings.__dict__, "similarity_floor": 0.5})
-
-
-def test_question_is_embedded_with_the_query_prefix_and_low_scores_dropped(retrieval_settings):
+def test_question_is_embedded_with_the_query_prefix_and_passages_are_capped_per_document(settings):
     seen, store = [], FakeStore()
-    passages = asyncio.run(PgVectorRetriever(store, embeddings(seen=seen), retrieval_settings).retrieve("Why restart?"))
+    passages = asyncio.run(PgVectorRetriever(store, embeddings(seen=seen), settings).retrieve("Why restart?"))
     assert seen == ["Represent this sentence for searching relevant passages: Why restart?"]
-    assert [p.chunk_id for p in passages] == ["7-0123456789ab-0", "9-0123456789ab-2"]
-    assert passages[0].heading_path == "Liveness" and passages[0].score == 0.82
-    assert store.limits == [5]
+    # Two passages per document at most, and none below the similarity floor.
+    assert [p.chunk_id for p in passages] == ["7-0123456789ab-0", "7-0123456789ab-1", "9-0123456789ab-2"]
+    assert passages[0].url == K8S + "probes/#liveness" and passages[0].score == 0.82
+    assert store.limits == [15]
+
+
+def test_a_weak_best_match_gets_no_passages_and_a_general_answer(settings):
+    weak = [(*row[:4], 0.6, row[5]) for row in ROWS]
+    model = FakeModelServer()
+    app = create_app(settings, backend=model.backend(), retriever=PgVectorRetriever(FakeStore(rows=weak), embeddings(), settings))
+    with signed_in(app) as client:
+        meta = parse_events(client.post("/api/chat", json={"question": "ping"}).text)[0][1]
+    assert (meta["mode"], meta["sources"]) == ("general", [])
+    assert model.chat_bodies[0]["messages"][0]["content"] == GENERAL_PROMPT
+
+
+def test_headings_are_cleaned_and_linked_to_their_section():
+    explicit = "Disruptions > PodDisruptionBudget example {#pdb-example}"
+    assert clean_heading(explicit) == "Disruptions > PodDisruptionBudget example"
+    assert section_url(K8S + "disruptions/", explicit) == K8S + "disruptions/#pdb-example"
+    assert section_url(K8S + "pods/", "Container states > `Terminated`") == K8S + "pods/#terminated"
+    assert section_url("https://github.com/o/r/blob/abc/RUNBOOK.md", "Operate > Rotate a secret") == \
+        "https://github.com/o/r/blob/abc/RUNBOOK.md#rotate-a-secret"
+    assert section_url(K8S + "service/", "") == K8S + "service/"
 
 
 def test_vectors_from_another_model_are_refused(settings):
@@ -103,8 +124,9 @@ def test_chat_uses_retrieved_passages(settings, log_stream):
                      PgVectorRetriever(FakeStore(), embeddings(), settings))
     with signed_in(app) as client:
         events = parse_events(client.post("/api/chat", json={"question": "Why restart?"}).text)
-    sources = events[0][1]["sources"]
-    assert [(s["label"], s["headingPath"]) for s in sources] == [("S1", "Liveness"), ("S2", "Rollouts"), ("S3", "")]
+    meta = events[0][1]
+    assert meta["mode"] == "documentation"
+    assert [(s["label"], s["headingPath"], s["url"]) for s in meta["sources"]][0] == ("S1", "Liveness", K8S + "probes/#liveness")
     prompt = model.chat_bodies[0]["messages"][-1]["content"]
     assert "[S1] Probes > Liveness\nA failing liveness probe restarts the container." in prompt
 
