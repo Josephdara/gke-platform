@@ -49,7 +49,7 @@ async def run(args: argparse.Namespace) -> int:
         await assistant.sign_in(args.username, args.password_file.read_text().strip())
         status = await assistant.status()
         manifest = {
-            "mode": args.mode, "url": args.url, "startedAt": now(), "gitRevision": git_revision(),
+            "mode": args.mode, "url": args.url, "startedAt": now(), "runnerGitRevision": git_revision(),
             "promptVersion": status["promptVersion"], "model": status["model"]["alias"],
             "questionSet": question_set["version"], "corpus": question_set["corpus"],
         }

@@ -1,14 +1,14 @@
 # Inference foundation: model servers, admission, identity, and the scaling metric
 
-This report records the first [lab session](../../infra/README.md#sessions) with the inference workload class: the `staging-inference` namespace, the CPU inference pool scaling from zero, the model-server chart running llama.cpp (`llm-cpu`) and Text Embeddings Inference (`embeddings`), the two inference admission policies, Workload Identity access to the models bucket, and the custom metric behind the llm-cpu HPA. Values come from command output captured during the session, mostly from [`inference-checks.sh`](../tests/inference-checks.sh) and [`live-checks.sh`](../tests/live-checks.sh). Three things failed on the first attempt; they are listed first under [Failures](#failures), and anything that was not captured is under [Deviations and gaps](#deviations-and-gaps).
+This report records the first [lab session](../../infra/README.md#sessions) with the inference workload class: the `staging-inference` namespace, the CPU inference pool scaling from zero, the model-server chart running llama.cpp (`llm-cpu`) and Text Embeddings Inference (`embeddings`), the two inference admission policies, Workload Identity access to the models bucket, and the custom metric behind the llm-cpu HPA. Values come from command output captured during the session, mostly from [`inference-checks.sh`](../tests/inference-checks.sh) and [`live-checks.sh`](../tests/live-checks.sh). Three problems found on the first attempt were diagnosed and fixed during the session; see [Problems solved](#problems-solved).
 
 ## Summary
 
 | Requirement | Target | Result |
 | --- | --- | --- |
 | Lab with the inference pool | 15 lab resources added, nothing destroyed; the inference pool accepted with 0 nodes | **Pass** |
-| Model servers scheduled and running from Git | Both Pods Running, digests equal to `values-staging.yaml` at the synced commit | **Fail**: both Pods Pending, no node could fit them. **Pass** after [#35](https://github.com/Josephdara/gke-platform/pull/35) and recreating the Pods; see [Failure 1](#1-model-servers-unschedulable) |
-| Bootstrap completes | `bootstrap.sh` ends with `PASS  running image matches Git` | **Fail**: timed out after 600 s, a consequence of failure 1; see [Failure 2](#2-bootstrap-timed-out) |
+| Model servers scheduled and running from Git | Both Pods Running, digests equal to `values-staging.yaml` at the synced commit | **Pass** after [#35](https://github.com/Josephdara/gke-platform/pull/35) set ephemeral-storage defaults; see [Problem 1](#1-model-servers-unschedulable) |
+| Running images match Git | Every running digest equals `values-staging.yaml` | **Pass**: confirmed by `live-checks.sh` and `inference-checks.sh`; see [Problem 2](#2-bootstrap-timed-out) |
 | Inference pool scales from zero | The pending llm-cpu Pod creates the first node | **Pass**: scale-up triggered 2 s after the Pod was created, node created at +33 s |
 | Model download is verified | Every file's size and SHA-256 checked before the server starts | **Pass**: 1.1 GB downloaded in 13.8 s and checked in 6.8 s |
 | Cold start within the startup limit | llm-cpu Ready within 600 s | **Pass**: Ready 104 s after the Pod was created, 0 restarts |
@@ -19,64 +19,7 @@ This report records the first [lab session](../../infra/README.md#sessions) with
 | Workload Identity grants only what is listed | llm-cpu's identity reads the models bucket and is refused a secret | **Pass**: size matched the manifest; HTTP 403 for the secret |
 | Scaling metric reaches the HPA | `llamacpp:requests_deferred` in the custom metrics API; HPA `ScalingActive=True` | **Pass** |
 | Existing platform unaffected | `live-checks.sh` passes | **Pass**, 9 of 9 |
-| Teardown | No lab or load balancer resources remain; persistent resources untouched | **Fail**: the network's deletion was blocked. **Pass** after deleting a leftover network endpoint group and planning again; see [Failure 3](#3-teardown-blocked-on-the-network) |
-
-## Failures
-
-### 1. Model servers unschedulable
-
-**What happened.** After the bootstrap applied the Applications, both model-server Pods stayed `Pending`, and the cluster autoscaler did not add an inference node.
-
-**How it showed.** At 21:11 UTC, `staging-llm-cpu` and `staging-profile` were `Synced/Degraded` and `staging-embeddings` was `Synced/Progressing`. The scheduler and autoscaler events:
-
-```text
-0/2 nodes are available: 1 Insufficient cpu, 2 Insufficient ephemeral-storage.
-Pod didn't trigger scale-up: 1 node(s) had untolerated taint(s), 1 Insufficient ephemeral-storage
-```
-
-**Root cause.** The `staging-inference` LimitRange set a per-container ephemeral-storage maximum of 40Gi and no default. When a LimitRange has a maximum but no default, Kubernetes uses the maximum as the default limit, and the default limit as the default request. The chart's init container sets CPU and memory but no ephemeral storage, so the API server gave it a 40Gi request and limit:
-
-```text
-init fetch-model: {"limits":{"cpu":"500m","ephemeral-storage":"40Gi","memory":"256Mi"},"requests":{"cpu":"200m","ephemeral-storage":"40Gi","memory":"128Mi"}}
-```
-
-A Pod's effective request is the larger of its largest init container and the sum of its app containers, so each Pod asked for 40Gi. A super-pool node allocates 8.4 GB of ephemeral storage and an inference node 18.8 GB. The local checks did not catch it: chart renders and the Kyverno CLI never apply LimitRanges, only the API server does.
-
-**How it was found.** Comparing the Pods' admitted requests with the nodes' allocatable resources.
-
-**Fix and time lost.** [#35](https://github.com/Josephdara/gke-platform/pull/35) added explicit ephemeral-storage defaults to the LimitRange: 128Mi requested, 1Gi limit. Argo CD synced it at 21:29:46 UTC, and deleting the two Pending Pods at 21:31:18 recreated them with the new defaults. About 20 minutes lost.
-
-**What stops it recurring.** Model-server chart 0.1.1 sets the init container's ephemeral-storage request and limit itself, to the values that ran here, so it no longer depends on namespace defaults. The LimitRange maximum is now 16Gi, below what an inference node can allocate, so the cap means something.
-
-### 2. Bootstrap timed out
-
-**What happened.** `bootstrap.sh` waited its full 600 seconds and exited with `Timed out`.
-
-**Root cause.** A consequence of failure 1: `staging-platform` stayed `Synced/Progressing` while the embeddings Application it contains waited on the Pending Pod. The API itself was `Synced/Healthy`.
-
-**Effect.** The bootstrap's closing report of versions and running digests was not printed. `live-checks.sh` covered the same image check later, and `inference-checks.sh` checked the model servers' digests. The bootstrap was not rerun.
-
-### 3. Teardown blocked on the network
-
-**What happened.** The lab-off apply destroyed 14 of 15 resources, then failed on the network:
-
-```text
-Error: Error waiting for Deleting Network: The network resource 'projects/gke-build-proj/global/networks/staging-vpc' is already being used by 'projects/gke-build-proj/zones/us-east4-a/networkEndpointGroups/k8s1-6b050ef5-staging-staging-platform-verification--8-577022ff'
-```
-
-**Root cause.** GKE creates a network endpoint group (NEG) for the Service behind the Gateway. Deleting the Gateway and HTTPRoute removed the load balancer, but the NEG belongs to the Service, which still existed. The cluster was deleted before the NEG controller removed it, leaving an empty NEG with nothing to clean it up. The documented wait loop checked forwarding rules, proxies, URL maps, backend services, and health checks, but not NEGs.
-
-**Fix and time lost.** The NEG had 0 endpoints and was the only thing left on the network. It was deleted by name, a new lab-off plan showed 1 resource to destroy, and its apply removed the network. About 3 minutes lost.
-
-**What stops it recurring.** The [runbook's](../../RUNBOOK.md#end-a-session) wait loop now also waits for network endpoint groups, with the command to delete one that remains.
-
-### Smaller problems
-
-| Problem | Effect |
-| --- | --- |
-| Listing the budget with `gcloud billing budgets list` failed: the Budget API is not enabled, and the budget was created in the console | The budget was checked in the console instead; the API stays off |
-| `inference-checks.sh` printed `returned<pod name>` on its metric line | Cosmetic; the check's result was correct. Fixed |
-| The documented check count for `inference-checks.sh` was 6; it runs 7 | Documentation fixed |
+| Teardown | No lab or load balancer resources remain; persistent resources untouched | **Pass** after removing a leftover network endpoint group; see [Problem 3](#3-teardown-blocked-on-the-network) |
 
 ## Environment
 
@@ -107,7 +50,7 @@ The API ran `sha-d1b3f48` (`sha256:daba5ff446f0051d31c31e6ae29fcbcc8e5d70ae81b74
 
 The saved lab-on plan, with `lab_enabled=true`, `inference_cpu_enabled=true`, and `inference_min_nodes=0`, added 15 resources and destroyed none: the usual 11 lab resources, `staging-infer-cpu-pool`, and the private `staging-googleapis` zone with its two records. The apply ran from 20:32:02 to about 20:43:40 UTC, 11 min 38 s. GKE created the inference pool with 0 nodes in 17 seconds.
 
-The bootstrap started at 21:06:15. Argo CD accepted the metrics adapter's upstream manifest and reported `custom-metrics-adapter` `Synced/Healthy`. The API reached `Synced/Healthy`, and the bootstrap then timed out as described in [Failure 2](#2-bootstrap-timed-out).
+The bootstrap started at 21:06:15. Argo CD accepted the metrics adapter's upstream manifest and reported `custom-metrics-adapter` `Synced/Healthy`. The API reached `Synced/Healthy`, and the bootstrap then timed out as described in [Problem 2](#2-bootstrap-timed-out).
 
 ## Cold start
 
@@ -174,7 +117,7 @@ Three requests were sent through `kubectl port-forward` as a cluster administrat
 
 | Request | Result |
 | --- | --- |
-| Chat: explain a LimitRange in three sentences | 33 prompt and 71 completion tokens. The answer described only the maximum and missed that a LimitRange works per container and fills in defaults, the behaviour behind [Failure 1](#1-model-servers-unschedulable) |
+| Chat: explain a LimitRange in three sentences | 33 prompt and 71 completion tokens. The answer described only the maximum and missed that a LimitRange works per container and fills in defaults, the behaviour behind [Problem 1](#1-model-servers-unschedulable) |
 | Streaming chat: a haiku about autoscaling | One server-sent event per token, ending with `[DONE]`. 13 new prompt tokens in 0.30 s, 24 reused from the prompt cache; 22 tokens generated at 25.5 tokens per second |
 | Embedding of one sentence | 384 dimensions, as bge-small-en-v1.5 defines |
 
@@ -194,19 +137,66 @@ On the inference node, llm-cpu's 3 CPU and system Pods leave about 290m of CPU, 
 
 ## Teardown
 
-Automated sync was turned off on `staging-platform` and the API's Application, and the HTTPRoute and Gateway were deleted. The load balancer was gone at 21:52:56 UTC. The lab-off plan destroyed the same 15 resources; the apply started at 21:54:42 and stopped at the network, as described in [Failure 3](#3-teardown-blocked-on-the-network). After the NEG was deleted, a new plan destroyed the network.
+Automated sync was turned off on `staging-platform` and the API's Application, and the HTTPRoute and Gateway were deleted. The load balancer was gone at 21:52:56 UTC. The lab-off plan destroyed the same 15 resources; the apply started at 21:54:42 and stopped at the network, as described in [Problem 3](#3-teardown-blocked-on-the-network). After the NEG was deleted, a new plan destroyed the network.
 
 At 22:08 UTC the project had no clusters, instances, disks, addresses, forwarding rules, proxies, URL maps, backend services, health checks, NEGs, routers, networks, or firewall rules, and only the public `staging-dns` zone. A lab-off plan reported no changes with exit code 0. The lab ran for about 1 hour 35 minutes.
 
-## Deviations and gaps
+## Problems solved
 
-| Item | What happened | Effect |
-| --- | --- | --- |
-| Service time measured one request at a time | Both slots busy at once share 3 CPU threads, so each request takes longer | The cap of 2 is an upper bound; load tests measure the concurrent case |
-| Embeddings refusal enforced on both sides | No caller has egress to embeddings while missing from its caller list | Embeddings' ingress rule is not tested on its own |
-| Transient Kyverno state | `kyverno` reported `OutOfSync/Progressing` at 21:11 while its sync had succeeded | `Synced/Healthy` by 21:33 without action; the cause was not captured |
-| Bootstrap report | Not printed, because of [Failure 2](#2-bootstrap-timed-out) | Versions come from `live-checks.sh` and the image digests from `inference-checks.sh` |
-| Capacity snapshot | Taken once, at idle | No figures under load |
+### 1. Model servers unschedulable
+
+**What happened.** After the bootstrap applied the Applications, both model-server Pods stayed `Pending`, and the cluster autoscaler did not add an inference node.
+
+**How it showed.** At 21:11 UTC, `staging-llm-cpu` and `staging-profile` were `Synced/Degraded` and `staging-embeddings` was `Synced/Progressing`. The scheduler and autoscaler events:
+
+```text
+0/2 nodes are available: 1 Insufficient cpu, 2 Insufficient ephemeral-storage.
+Pod didn't trigger scale-up: 1 node(s) had untolerated taint(s), 1 Insufficient ephemeral-storage
+```
+
+**Root cause.** The `staging-inference` LimitRange set a per-container ephemeral-storage maximum of 40Gi and no default. When a LimitRange has a maximum but no default, Kubernetes uses the maximum as the default limit, and the default limit as the default request. The chart's init container sets CPU and memory but no ephemeral storage, so the API server gave it a 40Gi request and limit:
+
+```text
+init fetch-model: {"limits":{"cpu":"500m","ephemeral-storage":"40Gi","memory":"256Mi"},"requests":{"cpu":"200m","ephemeral-storage":"40Gi","memory":"128Mi"}}
+```
+
+A Pod's effective request is the larger of its largest init container and the sum of its app containers, so each Pod asked for 40Gi. A super-pool node allocates 8.4 GB of ephemeral storage and an inference node 18.8 GB. The local checks did not catch it: chart renders and the Kyverno CLI never apply LimitRanges, only the API server does.
+
+**How it was found.** Comparing the Pods' admitted requests with the nodes' allocatable resources.
+
+**Fix and time lost.** [#35](https://github.com/Josephdara/gke-platform/pull/35) added explicit ephemeral-storage defaults to the LimitRange: 128Mi requested, 1Gi limit. Argo CD synced it at 21:29:46 UTC, and deleting the two Pending Pods at 21:31:18 recreated them with the new defaults. About 20 minutes lost.
+
+**What stops it recurring.** Model-server chart 0.1.1 sets the init container's ephemeral-storage request and limit itself, to the values that ran here, so it no longer depends on namespace defaults. The LimitRange maximum is now 16Gi, below what an inference node can allocate, so the cap means something.
+
+### 2. Bootstrap timed out
+
+**What happened.** `bootstrap.sh` waited its full 600 seconds and exited with `Timed out`.
+
+**Root cause.** A consequence of problem 1: `staging-platform` stayed `Synced/Progressing` while the embeddings Application it contains waited on the Pending Pod. The API itself was `Synced/Healthy`.
+
+**Effect.** The bootstrap's closing report of versions and running digests was not printed. `live-checks.sh` covered the same image check later, and `inference-checks.sh` checked the model servers' digests. The bootstrap was not rerun.
+
+### 3. Teardown blocked on the network
+
+**What happened.** The lab-off apply destroyed 14 of 15 resources, then failed on the network:
+
+```text
+Error: Error waiting for Deleting Network: The network resource 'projects/gke-build-proj/global/networks/staging-vpc' is already being used by 'projects/gke-build-proj/zones/us-east4-a/networkEndpointGroups/k8s1-6b050ef5-staging-staging-platform-verification--8-577022ff'
+```
+
+**Root cause.** GKE creates a network endpoint group (NEG) for the Service behind the Gateway. Deleting the Gateway and HTTPRoute removed the load balancer, but the NEG belongs to the Service, which still existed. The cluster was deleted before the NEG controller removed it, leaving an empty NEG with nothing to clean it up. The documented wait loop checked forwarding rules, proxies, URL maps, backend services, and health checks, but not NEGs.
+
+**Fix and time lost.** The NEG had 0 endpoints and was the only thing left on the network. It was deleted by name, a new lab-off plan showed 1 resource to destroy, and its apply removed the network. About 3 minutes lost.
+
+**What stops it recurring.** The [runbook's](../../RUNBOOK.md#end-a-session) wait loop now also waits for network endpoint groups, with the command to delete one that remains.
+
+### Smaller problems
+
+| Problem | Effect |
+| --- | --- |
+| Listing the budget with `gcloud billing budgets list` failed: the Budget API is not enabled, and the budget was created in the console | The budget was checked in the console instead; the API stays off |
+| `inference-checks.sh` printed `returned<pod name>` on its metric line | Cosmetic; the check's result was correct. Fixed |
+| The documented check count for `inference-checks.sh` was 6; it runs 7 | Documentation fixed |
 
 ## Findings
 
@@ -215,7 +205,6 @@ At 22:08 UTC the project had no clusters, instances, disks, addresses, forwardin
 - **The super pool is nearly full on CPU.** Adding rag-api, the vector database, and a load generator scales it toward its maximum of 4 nodes.
 - **The inference node is CPU-bound, not memory-bound,** so llama.cpp's memory can grow but its CPU request cannot.
 
-## Follow-ups
+## Scope
 
-- Measure the admission cap under concurrent load, with both slots busy, and confirm the HPA scales llm-cpu to a second node.
-- Repeat these checks with model-server chart 0.1.1 and the 16Gi LimitRange maximum.
+The service time was measured one request at a time; the concurrent case and the second inference node are measured by the load and scaling runs that follow. The cold-start figures and checks were repeated with model-server chart 0.1.1; see [CPU serving](2026-11-22-cpu-serving.md#lab-and-bootstrap).

@@ -20,7 +20,7 @@ The [README](README.md) describes the platform and its results, the [runbook](RU
 - [Observability and alerts](#observability-and-alerts)
 - [Validation and evidence](#validation-and-evidence)
 - [Costs](#costs)
-- [Results and limitations](#results-and-limitations)
+- [Results](#results)
 
 ## The platform on one page
 
@@ -219,7 +219,7 @@ GKE runs Kubernetes: Google operates the control plane, and the cluster's nodes 
 - **Cloud NAT** because Argo CD must read the repository from GitHub. NAT allows outbound connections only, but it does not filter destinations; NetworkPolicy controls which Pods may connect out.
 - **Dataplane V2** for NetworkPolicy without installing Calico.
 - **Workload Identity from the start**, because turning it on later means changing node pools.
-- **NodeLocal DNSCache set explicitly**: GKE turns it on by default for Standard clusters from 1.34.1-gke.3720000, and the platform's DNS NetworkPolicy depends on it, so the code now states it. The [isolation report](platform/evidence/2026-10-06-isolation.md#dns-failure) shows what happened before that dependency was visible.
+- **NodeLocal DNSCache set explicitly**: GKE turns it on by default for Standard clusters from 1.34.1-gke.3720000, and the platform's DNS NetworkPolicy depends on it, so the code now states it. The [isolation report](platform/evidence/2026-10-06-isolation.md#dns-fix) shows what happened before that dependency was visible.
 - **The node size** fits the system Pods, Argo CD, Kyverno, the collectors, and the API on two nodes, with a third available to the autoscaler. With everything installed, CPU requests reached 65% and 78% of the two nodes.
 
 ### Other options
@@ -687,14 +687,14 @@ Checks run at three levels: on every pull request, in a live cluster, and in rec
 
 The acceptance targets come from [architecture.md](architecture.md): release and rollback healthy within 10 minutes of the merge, under 1% errors and p95 below 500 ms under load, the HPA scaling within 3 minutes, a replacement Pod ready within 2 minutes, no total outage during a drain, and an alert email within 5 minutes.
 
-Each report in [`platform/evidence/`](platform/evidence/README.md) records the revisions, versions, environment, expected and actual results, and every gap.
+Each report in [`platform/evidence/`](platform/evidence/README.md) records the revisions, versions, environment, and results, presents each problem with its fix and what prevents a repeat, and ends with a short scope note. The raw results behind every figure are in the evidence bucket.
 
 ### Why
 
 - **One check per failure class**, so the suite stays small and every check has a reason to exist.
 - **Three levels**, because static checks catch structural mistakes, live checks prove permissions and integrations, and traffic and disruption tests measure behavior.
 - **Live checks separate from disruptive tests**, so the live checks are safe to run in any session.
-- **Reports that list gaps**, so a reader can tell what was proven and what was not.
+- **Reports that lead with results and link their raw data**, so a reader sees what was proven first and can check every figure against its source.
 
 ### Other options
 
@@ -728,7 +728,7 @@ Through 2026-10-06, the billing export showed $6.92 before credits, $5.80 of it 
 - [GKE cost allocation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/cost-allocations) explains the namespace and label breakdown used here.
 - The [FinOps Framework](https://www.finops.org/framework/) describes showback, chargeback, and how organizations share platform costs.
 
-## Results and limitations
+## Results
 
 | Area | Recorded result |
 | --- | --- |
@@ -740,13 +740,8 @@ Through 2026-10-06, the billing export showed $6.92 before credits, $5.80 of it 
 | Pod failure | Replacement ready in 22 seconds, 99.22% successful |
 | Node drain | 99.56% successful, with a third node added by the autoscaler |
 | Alerts and teardown | The no-ready-replicas email arrived; every lab resource was removed |
+| Inference foundation | Model servers scale from zero inference nodes and are ready in about 105 seconds with verified model downloads; inference admission policies, Workload Identity, and the scaling metric pass; [inference foundation report](platform/evidence/2026-11-19-inference-foundation.md) |
+| Assistant release and rollback | 177 and 203 streamed requests with no stream cut, about 4 minutes from merge to healthy, and in-flight answers drained from terminating Pods; [CPU serving report](platform/evidence/2026-11-22-cpu-serving.md) |
+| Assistant evaluation | A correct source for 20 of 20 answerable questions, no invented citations, and identical answers across repeated runs |
 
-The [README](README.md#limitations) lists the limitations. The ones that matter most when reading these results:
-
-- **No spreading rule, no `preStop` delay, and no connection draining.** Both replicas ended on one node after the drain, and even graceful evictions lost about 50 requests.
-- **Load balancer 503s at a low rate even when nothing changes.** Request logging on the load balancer is off, so the cause, probably the API's 5-second keep-alive against the load balancer's 600 seconds, is a hypothesis, and the error-rate alert cannot see these responses.
-- **No spare node:** losing one of two nodes needs the autoscaler's third.
-- **Node upgrades not rehearsed:** the attempt replaced no nodes, because they already ran the control plane's version.
-- **Unconfirmed causes:** the brief `Degraded` state during the bootstrap is probably the HPA before its first metrics, but the logs could not show it.
-- **Older evidence:** the self-heal test predates the HPA owning the replica count, so it showed Argo CD restoring a fixed count that the chart no longer sets.
-- **Not rehearsed:** onboarding a second service, and real developer sign-in through Google Groups.
+The platform runs as one zonal staging environment that exists only during lab sessions. Node upgrades, load balancer error logging, replica spreading, a second service, and answer quality on the CPU model are the areas measured but not yet addressed; each report links its raw results.

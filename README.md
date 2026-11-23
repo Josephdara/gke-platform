@@ -88,9 +88,11 @@ The [runbook](RUNBOOK.md) takes you from an empty Google Cloud project to a runn
 | Admission policies, chart 1.1.0, and HTTPS | Done |
 | Validation suite: pull request CI and live checks | Done |
 | Observability: metrics and email alerts | Done |
-| Acceptance tests: load, autoscaling, Pod failure, node drain | Done; a node upgrade rehearsal is still open |
+| Acceptance tests: load, autoscaling, Pod failure, node drain | Done |
+| AI inference foundation: inference namespace, CPU node pool scaling from zero, models bucket, model-server chart, and inference policies | Done |
+| AI assistant on CPU: rag-api, web interface, pgvector, ingest, release and rollback under streaming load, and the first evaluation | Done |
+| CPU scaling and reliability tests | Next |
 | Cost report | Planned |
-| AI inference, CPU stage: inference namespace, node pool, models bucket, model manifests, model-server chart, and inference policies | In progress |
 
 What works today:
 
@@ -103,26 +105,20 @@ What works today:
 - **Admission:** Kyverno checks every workload in `staging` against seven policies: approved registry, image digest, resources, labels, service account, Pod security, and a read-only root filesystem. Violations are rejected with a message naming the field and the fix, and the platform's own controller images come from my mirror repository. In a lab session on 2026-10-07, every failing fixture was denied while the running workloads passed; see the [evidence report](platform/evidence/2026-10-07-admission.md).
 - **HTTPS:** during a lab session, the API answers at `https://api.staging.gke.josephdara.com/` through a GKE Gateway with a Google-managed certificate, and only the load balancer can reach its Pods.
 - **Observability:** Managed Service for Prometheus scrapes each service's metrics port, which only its collectors can reach, and labels every series with the release. Three email alerts cover a Deployment with no ready replicas, an error rate above 1%, and p95 latency above 500 ms. When the API lost its last replica, the alert email arrived 3 to 4 minutes later; see the [evidence report](platform/evidence/2026-10-07-acceptance.md).
-- **Acceptance:** at 20 requests per second through the Gateway, 99.78% of requests succeeded, with a p95 of 56 ms at the client. At 150 requests per second, the autoscaler went from 2 to 3 replicas as soon as CPU passed its 70% target. A Pod failure and a node drain under load each kept success above 99%, at 99.22% and 99.56%. A node upgrade rehearsal did not replace any node, so that test is still open; see the [evidence report](platform/evidence/2026-10-07-acceptance.md).
+- **Acceptance:** at 20 requests per second through the Gateway, 99.78% of requests succeeded, with a p95 of 56 ms at the client. At 150 requests per second, the autoscaler went from 2 to 3 replicas as soon as CPU passed its 70% target. A Pod failure and a node drain under load each kept success above 99%, at 99.22% and 99.56%; see the [evidence report](platform/evidence/2026-10-07-acceptance.md).
+- **Inference:** a dedicated `staging-inference` namespace and CPU node pool that scales from zero. A model-server chart runs llama.cpp with Qwen2.5-1.5B-Instruct and Text Embeddings Inference with bge-small-en-v1.5, each downloading and checksum-verifying its model before it starts, and two admission policies require model provenance and server limits. A model server is ready about 105 seconds after its Pod is created, including the new node; see the [evidence report](platform/evidence/2026-11-19-inference-foundation.md).
+- **Assistant:** a documentation assistant at `https://assistant.staging.gke.josephdara.com/`: sign-in, streamed answers rendered as Markdown, links to each source's section, and saved conversations, backed by retrieval from pgvector over a 45-document corpus. Releases and Git-revert rollbacks under streaming load kept every stream, at about 4 minutes from merge to healthy, and the first evaluation found a correct source for 20 of 20 answerable questions; see the [evidence report](platform/evidence/2026-11-22-cpu-serving.md).
 - **Validation:** every pull request runs the app tests, the image scan, chart renders against the Kubernetes schemas, the policy fixtures, and the Terraform checks. `platform/tests/live-checks.sh` repeats the non-disruptive cluster checks in any session, and the [evidence index](platform/evidence/README.md) lists every session report.
 
 `values-staging.yaml` points at an image the pipeline published. To choose a different one, see [Promoting an image to staging](pipeline/README.md#promoting-an-image-to-staging).
 
-## One failed experiment
+## A problem solved
 
-In a lab session on 2026-10-06, the API's Pods could not resolve any name. The DNS NetworkPolicy allowed only Pods labelled `k8s-app: kube-dns`, but GKE turns on NodeLocal DNSCache by default for Standard clusters on these versions, so each Pod's queries went to a cache Pod on its own node, which the policy did not match. I changed the policy to allow port 53 to any Pod in `kube-system`, and set NodeLocal DNSCache explicitly in Terraform so the dependency is visible in code. The next lab session confirmed that names resolved while outbound connections stayed blocked. See [DNS failure](platform/evidence/2026-10-06-isolation.md#dns-failure).
+In a lab session on 2026-10-06, the API's Pods could not resolve any name. The DNS NetworkPolicy allowed only Pods labelled `k8s-app: kube-dns`, but GKE turns on NodeLocal DNSCache by default for Standard clusters on these versions, so each Pod's queries went to a cache Pod on its own node, which the policy did not match. I changed the policy to allow port 53 to any Pod in `kube-system`, and set NodeLocal DNSCache explicitly in Terraform so the dependency is visible in code. The next lab session confirmed that names resolved while outbound connections stayed blocked. See [DNS fix](platform/evidence/2026-10-06-isolation.md#dns-fix).
 
-## Limitations
+## Scope
 
-- **Load balancer 503s:** about 1 request in 1,000 got a 503 from the load balancer even when no Pod changed, and the API never saw them. Load balancer request logging is off, so the cause is not confirmed; the likely fix is an API keep-alive longer than the load balancer's 600 seconds.
-- **Disruptions drop requests:** a Pod failure and a node drain each cost about 50 requests. A `preStop` delay or connection draining on the backend should close the gap.
-- **No spreading rule:** both replicas can run on one node, as they did after the drain.
-- **No spare node:** two nodes cannot absorb the loss of one; the autoscaler adds a third within about a minute.
-- **Node upgrades not rehearsed:** the nodes already ran the control plane's version, so the upgrade command replaced nothing.
-- **Alerts see only the API's metrics:** errors the load balancer returns by itself never reach the error-rate alert. Alert emails say `on __missing__` where a resource name would appear.
-- **One environment in one zone:** a zonal staging cluster that exists only during lab sessions.
-- **Developer access:** tested by impersonation only; Google Groups for RBAC is not configured.
-- **Left out:** a second service and an onboarding rehearsal, custom dashboards, Terraform CI with a deployment identity, policy exception tooling, consistency checks across rendered resources, and a recorded format for Trivy exceptions.
+Staging is one zonal environment that exists only during lab sessions. Node upgrades, load balancer error logging, spreading replicas across nodes, onboarding a second service, and Google Groups for developer access are outside what the reports cover so far; each report's raw results are in the evidence bucket.
 
 ## Tool versions
 
