@@ -3,8 +3,8 @@ environment: staging
 
 image:
   repository: us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/rag-api
-  digest: "sha256:a56be370a55d24fc83eaedc2dc4ef8fd6ebaf603d78bab86db8b15df324d522b"
-releaseVersion: "sha-654a370"
+  digest: "sha256:65ad9dd03f2b54ac729054300fc3de28686dc6611d08ba76c7aa09b13a5bd464"
+releaseVersion: "sha-f489958"
 
 config:
   MODEL_URL: http://staging-llm-cpu.staging-inference.svc.cluster.local:8080
@@ -14,7 +14,7 @@ config:
   # GKE's external Application Load Balancer appends the client and its own address.
   FORWARDED_HOPS: "2"
   # off, inspect, or block. The template is Terraform's model_armor_template output.
-  MODEL_ARMOR_MODE: "off"
+  MODEL_ARMOR_MODE: inspect
   MODEL_ARMOR_TEMPLATE: projects/gke-build-proj/locations/us-east4/templates/staging-assistant
 
 secrets:
