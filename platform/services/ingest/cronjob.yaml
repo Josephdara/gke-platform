@@ -46,13 +46,13 @@ spec:
               type: RuntimeDefault
           containers:
             - name: ingest
-              image: "us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/ingest@sha256:6f0648006f67272016f0bd5e7c647f5cb340aee90cf6ce5b14da817a2c233491"
+              image: "us-east4-docker.pkg.dev/gke-build-proj/gke-build-proj-staging-images/ingest@sha256:dccb563418c9322b96bfa649e5d486c8df646cce4a0bde463f37b68f2b7a3344"
               imagePullPolicy: IfNotPresent
               env:
                 - name: ENVIRONMENT
                   value: staging
                 - name: RELEASE_VERSION
-                  value: sha-aaa0a4c
+                  value: sha-f489958
                 # The corpus revision this platform loads. A new snapshot is a new upload and
                 # a one-line change here.
                 - name: CORPUS_SOURCE
