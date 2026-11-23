@@ -197,6 +197,14 @@ for (const [scenario, message] of [
   });
 }
 
+test('a withheld answer is replaced by the policy notice', async ({ page }) => {
+  await signIn(page, 'withheld');
+  await ask(page);
+  await complete(page);
+  await expect(answer(page)).toContainText('withheld because it did not pass the content policy');
+  await expect(answer(page).locator('.answer-text, .sources')).toHaveCount(0);
+});
+
 test('length limit preserves the answer and explains how to continue', async ({ page }) => {
   await signIn(page, 'length');
   await ask(page);

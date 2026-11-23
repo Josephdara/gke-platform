@@ -49,6 +49,12 @@ def test_stall_timeout_must_be_shorter_than_the_deadline():
         Settings.from_env({**BASE, "STALL_TIMEOUT_SECONDS": "120"})
 
 
+def test_first_token_timeout_sits_between_the_stall_timeout_and_the_deadline():
+    for value in ("10", "120"):
+        with pytest.raises(ConfigurationError, match="FIRST_TOKEN_TIMEOUT_SECONDS"):
+            Settings.from_env({**BASE, "FIRST_TOKEN_TIMEOUT_SECONDS": value})
+
+
 def test_errors_do_not_echo_values():
     with pytest.raises(ConfigurationError) as error:
         Settings.from_env({**BASE, "LOG_LEVEL": "sensitive-invalid-value"})

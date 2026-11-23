@@ -13,6 +13,7 @@ import yaml
 from .client import Assistant, SignInFailed, now
 from .evaluate import review_sheet, run_eval, scores
 from .load import run_load, sample_line, summarize
+from .upload import upload
 
 
 def git_revision() -> str:
@@ -34,6 +35,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--concurrency", type=int, default=2, help="load: requests in flight at once")
     parser.add_argument("--duration", type=float, default=300, help="load: seconds to keep starting requests")
     parser.add_argument("--kinds", default="answerable", help="load: comma-separated question kinds to cycle through")
+    parser.add_argument("--upload", help="gs://BUCKET/PREFIX/ to copy the run's files to, as the Pod's Workload Identity")
     args = parser.parse_args(argv)
     if not 1 <= args.concurrency <= 16 or args.duration <= 0:
         parser.error("--concurrency must be 1 to 16 and --duration positive")
@@ -74,6 +76,11 @@ async def run(args: argparse.Namespace) -> int:
             (out / "review.md").write_text(review_sheet(results, manifest))
             print(json.dumps(report["scores"]))
         print(f"Wrote {out}")
+        if args.upload:
+            import httpx
+            with httpx.Client(timeout=60) as client:
+                for name in upload(out, args.upload, client):
+                    print(f"Uploaded {name}")
         return 0
     except SignInFailed as exc:
         print(f"Sign-in failed: {exc}", file=sys.stderr)

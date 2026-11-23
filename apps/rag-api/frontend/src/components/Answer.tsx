@@ -30,6 +30,8 @@ export function Answer({ message, onRetry, retryDisabled, announce }: AnswerProp
     : message.status === 'length' ? 'Length limit reached' : 'Complete';
   const unshownInvalid = invalid.filter((label) => !message.content.includes(`[${label}]`));
   const mode = message.sources.length > 0 ? 'From your documentation' : 'General answer';
+  // A withheld answer was already streamed; once the policy result arrives, it is replaced.
+  const withheld = message.done?.policy?.withheld ?? false;
   async function copy() {
     try {
       await navigator.clipboard.writeText(message.content);
@@ -42,10 +44,11 @@ export function Answer({ message, onRetry, retryDisabled, announce }: AnswerProp
     <div className="answer-heading"><span className="assistant-avatar" aria-hidden="true">P</span><span>Platform Assistant</span>
       {message.content && <span className={`answer-tag ${message.sources.length ? '' : 'general'}`}>{mode}</span>}</div>
     {message.phase === 'waiting' && <div className="thinking"><span className="thinking-indicator" aria-hidden="true" /><p>Searching the documentation, then thinking...</p><span className="muted">This can take a few seconds.</span></div>}
-    {message.content && <Markdown content={message.content} sources={message.sources} valid={valid} invalid={invalid} />}
+    {withheld && <p className="notice">This answer was withheld because it did not pass the content policy.</p>}
+    {message.content && !withheld && <Markdown content={message.content} sources={message.sources} valid={valid} invalid={invalid} />}
     {message.phase === 'streaming' && <span className="stream-indicator" aria-label="Answer is streaming" />}
     {unshownInvalid.map((label) => <p key={label} className="unverified">{label}: unverified citation</p>)}
-    {finished && message.sources.length > 0 && <Sources sources={message.sources} cited={valid.filter((label) => message.content.includes(`[${label}]`))} />}
+    {finished && !withheld && message.sources.length > 0 && <Sources sources={message.sources} cited={valid.filter((label) => message.content.includes(`[${label}]`))} />}
     {finished && <div className="answer-footer">
       <span className={message.status === 'complete' ? 'completion' : 'completion attention'}>{status}</span>
       {message.content && <button type="button" className="text-button" onClick={() => { void copy(); }}>{copied ? 'Copied' : 'Copy answer'}</button>}

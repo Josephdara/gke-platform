@@ -9,7 +9,9 @@ locals {
     "cloudbuild.googleapis.com",
     "containeranalysis.googleapis.com",
     "dns.googleapis.com",
-    "certificatemanager.googleapis.com"
+    "certificatemanager.googleapis.com",
+    "modelarmor.googleapis.com",
+    "aiplatform.googleapis.com"
   ])
 }
 

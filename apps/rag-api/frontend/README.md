@@ -45,6 +45,7 @@ The ordinary stream waits about 3.4 seconds before its first text, then emits on
 | `deadline` | Send a question for a deadline error after partial text. |
 | `stalled` | Send a question for a stalled-stream error after partial text. |
 | `invalid-citations` | Complete an answer to see non-clickable unverified S9 and literal HTML-like text. |
+| `withheld` | Complete an answer to see it replaced by the content policy notice. |
 | `sign-in-rate-limited` | Submit valid credentials for a five-second sign-in countdown. Enter the password again afterward. |
 | `retrieval-mismatch` | See the index-mismatch status and a retrieval-unavailable response. |
 | `retrieval-disabled` | See the disabled status and an answer with no retrieved sources. |
@@ -71,7 +72,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The 40 Playwright tests run in Chromium against a mock build served by `vite preview` on `127.0.0.1:4173`. They cover sign-in, streaming, sources and citations, stop, deletion, sign-out, every scenario above, explicit retry, keyboard focus, 360 px light and dark layouts, safe Markdown rendering of untrusted model output, and that the page makes no unexpected requests or CSP violations. Pull request validation runs lint, the type check, and the build in its `frontend-lint` step; Playwright runs locally.
+The 41 Playwright tests run in Chromium against a mock build served by `vite preview` on `127.0.0.1:4173`. They cover sign-in, streaming, sources and citations, stop, deletion, sign-out, every scenario above, explicit retry, keyboard focus, 360 px light and dark layouts, safe Markdown rendering of untrusted model output, and that the page makes no unexpected requests or CSP violations. Pull request validation runs lint, the type check, and the build in its `frontend-lint` step; Playwright runs locally.
 
 ## How it behaves
 

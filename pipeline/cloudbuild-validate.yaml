@@ -113,6 +113,26 @@ steps:
       - --ignorefile=apps/ingest/.trivyignore.yaml
       - --exit-code=1
 
+  - id: build-loadgen
+    name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
+    args: [build, --platform, linux/amd64, -t, "validate/loadgen:${SHORT_SHA}", apps/loadgen]
+
+  - id: export-loadgen
+    name: gcr.io/cloud-builders/docker@sha256:40c2fb4fcd0ad51376eef166c2e7b2b40a3508d5776e2bf33db3783ab39d0f2e
+    args: [save, -o, /workspace/loadgen.tar, "validate/loadgen:${SHORT_SHA}"]
+
+  - id: scan-loadgen
+    name: ghcr.io/aquasecurity/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+    args:
+      - image
+      - --input=/workspace/loadgen.tar
+      - --cache-dir=/workspace/.trivy
+      - --scanners=vuln,secret
+      - --severity=MEDIUM,HIGH,CRITICAL
+      - --ignore-unfixed
+      - --ignorefile=apps/loadgen/.trivyignore.yaml
+      - --exit-code=1
+
   - id: frontend-lint
     name: node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc
     dir: apps/rag-api/frontend

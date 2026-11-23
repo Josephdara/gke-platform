@@ -43,7 +43,7 @@ export type DeleteConversationRequest = ConversationRequest;
 export type DeleteConversationResponse = void;
 export interface ChatRequest { question: string; conversationId?: string }
 export type ChatRejection =
-  | { status: 422; body: { detail: 'question_too_long' | 'question_empty' } }
+  | { status: 422; body: { detail: 'question_too_long' | 'question_empty' | 'blocked_by_policy' } }
   | { status: 429; body: { detail: 'busy' | 'rate_limited' }; retryAfterSeconds: number }
   | { status: 503; body: { detail: 'model_unavailable' | 'retrieval_unavailable' | 'upstream_failed' } }
   | { status: 401; body?: UnauthorizedError };
@@ -62,6 +62,8 @@ export interface ChatDone {
   usage: { promptTokens: number; completionTokens: number };
   timings: { ttftMs: number; totalMs: number };
   citations: { valid: string[]; invalid: string[] };
+  /** Present when the content policy withheld the answer. */
+  policy?: { withheld: boolean; filters: string[] };
 }
 export interface ChatError {
   reason: 'upstream_failed' | 'stalled' | 'deadline' | 'model_unavailable';

@@ -3,7 +3,7 @@
 This report covers two [lab sessions](../../infra/README.md#sessions) with the full assistant on the CPU inference pool: rag-api with its web interface, pgvector, ingest, the llm-cpu chat model, and the embeddings server, all deployed by Argo CD and served at `https://assistant.staging.gke.josephdara.com/`.
 
 - **2026-11-20:** the first deployment. The corpus was loaded, the site was checked end to end, and the improvements found there were shipped before the second session.
-- **2026-11-22:** a rag-api release, its rollback by Git revert, and a re-release, each timed from merge to healthy, with [loadgen](../../apps/loadgen/README.md) streaming answers through the load balancer during the release and the rollback; then the first scored run of the 30-question [evaluation set](../../eval/questions.yaml).
+- **2026-11-22:** a rag-api release, its rollback by Git revert, and a re-release, each timed from merge to healthy, with [loadgen](../../apps/loadgen/README.md) streaming answers through the load balancer during the release and the rollback; then the first scored run of the 30-question [evaluation set](../../apps/loadgen/eval/questions.yaml).
 
 Values come from command output captured during the sessions, loadgen's raw samples, rag-api's logs, and the check scripts.
 
@@ -43,7 +43,7 @@ Values come from command output captured during the sessions, loadgen's raw samp
 | GKE leaves the Gateway's network endpoint groups after the load balancer is removed | The [runbook's](../../RUNBOOK.md#end-a-session) teardown waits for them and deletes any that remain, so the network was never blocked |
 | A local evaluation showed the model copying the prompt's example citation, and answers varying between runs | Found before the lab and fixed by [#44](https://github.com/Josephdara/gke-platform/pull/44) |
 | Against a rate-limited account, loadgen's workers retried at once | Fixed before merging: a worker waits for the server's `Retry-After` |
-| The runbook's lab resource counts predated the assistant's DNS record | Corrected to 12, or 16 with the inference pool |
+| The runbook's lab resource counts predated the assistant's DNS record | Corrected to 15, or 16 with the inference pool |
 
 ## Environment
 

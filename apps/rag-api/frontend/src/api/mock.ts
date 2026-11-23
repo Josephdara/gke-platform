@@ -11,7 +11,7 @@ export const scenarios = [
   'default', 'loading', 'no-sources', 'unauthorized', 'rate-limited', 'busy',
   'model-unavailable', 'retrieval-unavailable', 'length', 'partial-failure',
   'stream-failure', 'stream-model-unavailable', 'deadline', 'stalled', 'invalid-citations',
-  'sign-in-rate-limited', 'retrieval-mismatch', 'retrieval-disabled', 'upstream-failed',
+  'sign-in-rate-limited', 'withheld', 'retrieval-mismatch', 'retrieval-disabled', 'upstream-failed',
   'question-empty', 'question-too-long', 'conversation-not-found', 'unsafe-source',
   'unauthorized-history', 'unauthorized-delete',
   'unauthorized-signout', 'unauthorized-status', 'unauthorized-list',
@@ -205,6 +205,7 @@ export class MockAssistantApi implements AssistantApi {
         status: assistant.status,
         usage: { promptTokens: 920, completionTokens: sent },
         timings: { ttftMs, totalMs: Math.round(performance.now() - startedAt) },
+        ...(this.scenario === 'withheld' ? { policy: { withheld: true, filters: ['pi_and_jailbreak'] } } : {}),
         citations: {
           valid: cited.filter((label) => selectedSources.some((source) => source.label === label)),
           invalid: cited.filter((label) => !selectedSources.some((source) => source.label === label)),

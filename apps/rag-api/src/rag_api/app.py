@@ -2,11 +2,13 @@ from contextlib import asynccontextmanager
 import logging
 
 from fastapi import FastAPI
+import httpx
 
 from .auth import Sessions, load_key, load_users
 from .chat import router as chat_router
 from .config import Settings
 from .conversations import ConversationStore, MemoryConversationStore, PgConversationStore
+from .guardrails import MetadataToken, ModelArmor, NoGuardrail
 from .inference import InferenceBackend, LlamaCppBackend, create_model_client
 from .limits import AdmissionLimiter, RateLimiter
 from .logging import RequestLoggingMiddleware, create_logger
@@ -21,6 +23,7 @@ def create_app(
     backend: InferenceBackend | None = None,
     retriever: Retriever | None = None,
     conversations: ConversationStore | None = None,
+    guardrail=None,
 ) -> FastAPI:
     settings = settings if settings is not None else Settings.from_env()
     logger = logger if logger is not None else create_logger(settings)
@@ -29,13 +32,15 @@ def create_app(
     async def lifespan(app: FastAPI):
         clients = []
         if app.state.backend is None:
-            # A read timeout above the stall timeout, so the stall check fires first.
-            clients.append(create_model_client(settings.model_url, read_seconds=settings.stall_timeout_seconds + 5))
+            # A read timeout above both token timeouts, so rag-api's own checks fire first.
+            clients.append(create_model_client(settings.model_url, read_seconds=settings.first_token_timeout_seconds + 5))
             app.state.backend = LlamaCppBackend(clients[-1], settings.model_alias)
         if app.state.retriever is None:
             app.state.retriever = build_retriever(settings, clients)
         if app.state.conversations is None:
             app.state.conversations = build_conversations(settings)
+        if app.state.guardrail is None:
+            app.state.guardrail = build_guardrail(settings, clients)
         app.state.ready = True
         logger.info("application_started")
         try:
@@ -53,6 +58,7 @@ def create_app(
     app.state.backend = backend
     app.state.retriever = retriever
     app.state.conversations = conversations
+    app.state.guardrail = guardrail
     # Read once at startup; a rotated users file or session key takes effect when the Pod restarts.
     app.state.sessions = Sessions(load_users(settings.users_file), load_key(settings.session_key_file),
                                   settings.session_hours * 3600)
@@ -79,6 +85,15 @@ def database(settings: Settings) -> dict:
 def build_conversations(settings: Settings) -> ConversationStore:
     # Without a database, conversations live in memory until the process restarts.
     return PgConversationStore(database(settings)) if settings.database_host else MemoryConversationStore()
+
+
+def build_guardrail(settings: Settings, clients: list):
+    if settings.model_armor_mode == "off":
+        return NoGuardrail()
+    clients.append(httpx.AsyncClient(timeout=3))
+    token = MetadataToken(clients[-1])
+    clients.append(httpx.AsyncClient(timeout=5))
+    return ModelArmor(clients[-1], settings.model_armor_template, token)
 
 
 def build_retriever(settings: Settings, clients: list) -> Retriever:

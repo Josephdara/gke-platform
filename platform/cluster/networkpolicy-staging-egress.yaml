@@ -38,6 +38,22 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    # Model Armor, through Private Google Access, and Workload Identity tokens from the GKE
+    # metadata server.
+    - to:
+        - ipBlock:
+            cidr: 199.36.153.8/30
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -86,3 +102,27 @@ spec:
           port: 80
         - protocol: TCP
           port: 8080
+---
+# End-to-end benchmarks go through the Gateway's public address, which changes with every lab, so
+# loadgen may open HTTPS to public addresses. Its identity can only write its own evidence prefix.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: staging-loadgen-gateway-egress
+  namespace: staging
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  podSelector:
+    matchLabels:
+      service: loadgen
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16]
+      ports:
+        - protocol: TCP
+          port: 443

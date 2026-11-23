@@ -6,6 +6,7 @@ import httpx
 from loadgen.client import Assistant, Sample
 from loadgen.evaluate import score
 from loadgen.load import summarize
+from loadgen.upload import upload
 
 META = {"conversationId": "c1", "mode": "documentation", "promptVersion": "grounded-v2",
         "sources": [{"label": "S1", "title": "Deployments", "headingPath": "Rolling Back a Deployment > Checking", "score": 0.8}]}
@@ -62,3 +63,21 @@ def test_summary_and_evaluation_checks():
     assert score(question, answered) == {"answered": True, "cited": [], "retrievalHit": True, "retrievalRank": 1}
     invented = Sample("q", "t", "complete", answer="It is Bob [S1].")
     assert score({"kind": "unanswerable"}, invented)["noCitations"] is False
+
+
+def test_upload_writes_each_file_under_the_prefix_as_the_workload_identity(tmp_path):
+    run = tmp_path / "load-release-1808"
+    run.mkdir()
+    (run / "summary.json").write_text("{}")
+    (run / "samples.jsonl").write_text("")
+    seen = []
+
+    def handle(request):
+        if request.url.host == "metadata.google.internal":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        seen.append((request.url.params["name"], request.headers["authorization"]))
+        return httpx.Response(200, json={})
+    written = upload(run, "gs://evidence/inference/loadgen/2026-11-22", httpx.Client(transport=httpx.MockTransport(handle)))
+    assert seen == [("inference/loadgen/2026-11-22/load-release-1808/samples.jsonl", "Bearer t"),
+                    ("inference/loadgen/2026-11-22/load-release-1808/summary.json", "Bearer t")]
+    assert len(written) == 2
