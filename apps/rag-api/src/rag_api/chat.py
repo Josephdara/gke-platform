@@ -14,9 +14,10 @@ from .auth import current_user, forbidden_mutation, unauthorized
 from .budget import Budget, BudgetExceeded, FittedPrompt, fit_prompt
 from .conversations import ConversationsUnavailable, StoredMessage, history, valid_id
 from .inference import Finish, InferenceBackend, ModelUnavailable, Token, UpstreamError
+from .guardrails import Verdict
 from .metrics import (
-    RAG_ACTIVE_STREAMS, RAG_COMPLETION, RAG_GENERATED_TOKENS, RAG_INVALID_CITATIONS, RAG_REJECTIONS,
-    RAG_REQUESTS, RAG_RETRIEVAL, RAG_TTFT,
+    RAG_ACTIVE_STREAMS, RAG_COMPLETION, RAG_GENERATED_TOKENS, RAG_GUARDRAIL_CHECKS, RAG_GUARDRAIL_SECONDS,
+    RAG_INVALID_CITATIONS, RAG_REJECTIONS, RAG_REQUESTS, RAG_RETRIEVAL, RAG_TTFT,
 )
 from .prompt import PROMPT_VERSION, check_citations
 from .retrieval import RetrievalUnavailable
@@ -43,6 +44,9 @@ class ChatRequest(BaseModel):
     conversationId: str | None = None
 
 
+# What is saved, and shown, in place of an answer Model Armor flagged in block mode.
+WITHHELD = "This answer was withheld because it did not pass the content policy."
+
 # How each stream outcome is saved on the answer.
 SAVED_STATUS = {"complete": "complete", "length": "length", "cancelled": "cancelled"}
 
@@ -55,6 +59,22 @@ def refuse(reason: str, status: int, detail: str, retry_after: int | None = None
     RAG_REJECTIONS.labels(reason).inc()
     headers = {"Retry-After": str(retry_after)} if retry_after else None
     return JSONResponse({"detail": detail}, status_code=status, headers=headers)
+
+
+async def screen(state, point: str, text: str, request_id: str) -> Verdict:
+    """Runs one Model Armor check and records its result. Only filter names are logged."""
+    started = time.monotonic()
+    guardrail = state.guardrail
+    verdict = await (guardrail.screen_response(text) if point == "answer" else guardrail.screen_prompt(text))
+    if state.settings.model_armor_mode != "off":
+        RAG_GUARDRAIL_SECONDS.labels(point).observe(time.monotonic() - started)
+        result = "flagged" if verdict.flagged else "clear" if verdict.checked else "unavailable"
+        RAG_GUARDRAIL_CHECKS.labels(point, result).inc()
+        if verdict.flagged:
+            state.logger.warning("guardrail_flagged", extra={"request_id": request_id, "point": point,
+                                                             "filters": verdict.filters,
+                                                             "policy_mode": state.settings.model_armor_mode})
+    return verdict
 
 
 @router.post("/api/chat")
@@ -89,10 +109,25 @@ async def chat(request: Request, body: ChatRequest):
     if not state.admission.try_acquire():
         return refuse("admission", 429, "busy", ADMISSION_RETRY_SECONDS)
 
-    try:
+    request_id = request.state.request_id
+    blocking = settings.model_armor_mode == "block"
+
+    async def retrieve():
         retrieval_started = time.monotonic()
-        passages = await state.retriever.retrieve(question)
+        found = await state.retriever.retrieve(question)
         RAG_RETRIEVAL.observe(time.monotonic() - retrieval_started)
+        return found
+
+    try:
+        # The question is screened while passages are retrieved, so the check adds little wait.
+        verdict, passages = await asyncio.gather(screen(state, "question", question, request_id), retrieve())
+        if blocking and verdict.flagged:
+            state.admission.release()
+            return refuse("policy", 422, "blocked_by_policy")
+        # Retrieved passages are untrusted text: one carrying injected instructions is dropped.
+        verdicts = await asyncio.gather(*(screen(state, "passage", p.text, request_id) for p in passages))
+        if blocking:
+            passages = [p for p, v in zip(passages, verdicts) if not v.flagged]
         budget = Budget(settings.context_tokens, settings.output_tokens, settings.passage_tokens, settings.history_turns)
         fitted = await fit_prompt(question, history(conversation) if conversation else [], passages, state.backend, budget)
         conversation_id = conversation.id if conversation else await store.create(user.username, question[:64])
@@ -117,7 +152,7 @@ async def chat(request: Request, body: ChatRequest):
         state.admission.release()
         raise
 
-    stream = stream_answer(state, fitted, request.state.request_id, started, user.username, conversation_id)
+    stream = stream_answer(state, fitted, request_id, started, user.username, conversation_id)
     return StreamingResponse(stream, media_type="text/event-stream", headers={"Cache-Control": "no-store"})
 
 
@@ -126,25 +161,30 @@ def source_list(fitted: FittedPrompt) -> list[dict]:
              "url": p.url, "score": round(p.score, 4)} for n, p in enumerate(fitted.passages, start=1)]
 
 
-async def bounded(events: AsyncIterator, stall_seconds: float, deadline: float) -> AsyncIterator:
+async def bounded(events: AsyncIterator, stall_seconds: float, deadline: float,
+                  first_seconds: float | None = None) -> AsyncIterator:
     """Yields upstream events, failing when one takes longer than the stall timeout or the deadline.
+    The first event may take up to first_seconds instead, because it waits for a free slot and the
+    whole prompt to be processed.
 
     Each wait gets its own timeout and nothing is yielded inside one, because a timeout spanning a
     yield would cancel whatever the consumer is awaiting instead of this stream.
     """
+    limit = first_seconds or stall_seconds
     try:
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise DeadlineReached
-            wait = min(stall_seconds, remaining)
+            wait = min(limit, remaining)
             try:
                 async with asyncio.timeout(wait):
                     event = await anext(events)
             except StopAsyncIteration:
                 return
             except TimeoutError:
-                raise (Stalled if wait == stall_seconds else DeadlineReached) from None
+                raise (Stalled if wait == limit else DeadlineReached) from None
+            limit = stall_seconds
             yield event
     finally:
         # Closing the upstream request frees the model server's slot. The shield lets the close
@@ -162,8 +202,10 @@ async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: f
     ttft: float | None = None
     finish: Finish | None = None
     citations = None
+    withheld = False
     deadline = started + settings.request_deadline_seconds
-    guarded = bounded(backend.chat_stream(fitted.messages, settings.output_tokens), settings.stall_timeout_seconds, deadline)
+    guarded = bounded(backend.chat_stream(fitted.messages, settings.output_tokens), settings.stall_timeout_seconds, deadline,
+                      settings.first_token_timeout_seconds)
     RAG_ACTIVE_STREAMS.inc()
     try:
         yield sse("meta", {
@@ -201,6 +243,13 @@ async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: f
             state.logger.error("chat_stream_failed", extra={"request_id": request_id, "error_type": type(exc).__name__})
 
         if outcome in ("complete", "length"):
+            # The finished answer is screened before the terminal event. In block mode a flagged
+            # answer is withheld: the interface replaces it, and the saved answer is the notice.
+            policy = None
+            answer = await screen(state, "answer", "".join(parts), request_id)
+            if settings.model_armor_mode == "block" and answer.flagged:
+                policy = {"withheld": True, "filters": answer.filters}
+                withheld = True
             citations = check_citations("".join(parts), len(fitted.passages))
             if citations.invalid:
                 RAG_INVALID_CITATIONS.inc(len(citations.invalid))
@@ -215,6 +264,7 @@ async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: f
                     "totalMs": round((time.monotonic() - started) * 1000),
                 },
                 "citations": {"valid": citations.valid, "invalid": citations.invalid},
+                **({"policy": policy} if policy else {}),
             })
         else:
             yield sse("error", {"reason": outcome, "partial": bool(parts)})
@@ -237,7 +287,8 @@ async def stream_answer(state, fitted: FittedPrompt, request_id: str, started: f
         try:
             with anyio.CancelScope(shield=True):
                 await state.conversations.add_message(username, conversation_id, StoredMessage(
-                    "assistant", "".join(parts), SAVED_STATUS.get(outcome, "failed"), sources))
+                    "assistant", WITHHELD if withheld else "".join(parts), SAVED_STATUS.get(outcome, "failed"),
+                    [] if withheld else sources))
         except ConversationsUnavailable:
             state.logger.error("answer_not_saved", extra={"request_id": request_id, "error_type": "ConversationsUnavailable"})
         state.logger.info("chat_completed", extra={

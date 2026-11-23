@@ -70,6 +70,10 @@ module "secrets" {
       { namespace = "${var.environment}-inference", service = "pgvector" },
       { namespace = var.environment, service = "rag-api" }
     ]
+    # The password of the rag-api account exempt from the rate limit, which loadgen signs in as.
+    rag-api-bench-password = [
+      { namespace = var.environment, service = "loadgen" }
+    ]
   }
   ungranted_secrets = ["forbidden-demo"]
 }
@@ -109,6 +113,13 @@ locals {
       role      = "roles/storage.objectCreator"
       namespace = "${var.environment}-inference"
       service   = "ingest"
+    }
+    "evidence/inference/loadgen/loadgen" = {
+      bucket    = "evidence"
+      prefix    = "inference/loadgen/"
+      role      = "roles/storage.objectCreator"
+      namespace = var.environment
+      service   = "loadgen"
     }
   }
 }
@@ -162,9 +173,9 @@ module "pipeline" {
   publish_service_account_id  = module.identity.ci_build_publish_id
   images_repository_id        = module.foundation.images_repository_id
   labels                      = { component = "pipeline" }
-  publish_apps                = ["platform-verification-api", "rag-api", "ingest"]
+  publish_apps                = ["platform-verification-api", "rag-api", "ingest", "loadgen"]
   # Build evidence under these prefixes expires after 90 days; inference evidence is kept.
-  evidence_expiring_prefixes = ["platform-verification-api/", "rag-api/", "ingest/"]
+  evidence_expiring_prefixes = ["platform-verification-api/", "rag-api/", "ingest/", "loadgen/"]
 }
 
 resource "google_storage_bucket_iam_member" "ci_write_evidence" {
@@ -221,4 +232,5 @@ module "alerts" {
 
   project_id  = var.project_id
   environment = var.environment
+  inference   = var.inference_cpu_enabled
 }

@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 import os
 
+from .guardrails import TEMPLATE
+
 
 class ConfigurationError(ValueError):
     """A configuration field is missing or invalid."""
@@ -29,6 +31,9 @@ class Settings:
     request_deadline_seconds: int = 120
     # Longest wait for the next token before the stream fails as stalled.
     stall_timeout_seconds: int = 30
+    # Longest wait for the first token. It covers queueing behind busy slots and prompt processing,
+    # which on CPU can take longer than the gap between later tokens.
+    first_token_timeout_seconds: int = 90
     context_tokens: int = 4096
     output_tokens: int = 384
     passage_tokens: int = 1200
@@ -63,6 +68,10 @@ class Settings:
     forwarded_hops: int = 0
     # The built frontend. Unset, rag-api serves the API only.
     static_dir: str | None = None
+    # Model Armor: off, inspect (screen and record), or block (refuse flagged questions, drop
+    # flagged passages, withhold flagged answers), with the template's full resource name.
+    model_armor_mode: str = "off"
+    model_armor_template: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "Settings":
@@ -121,6 +130,15 @@ class Settings:
                 raise ConfigurationError(f"{name} must be a number from 0 up to 1")
             return value
 
+        model_armor_mode = text("MODEL_ARMOR_MODE", "off").lower()
+        if model_armor_mode not in ("off", "inspect", "block"):
+            raise ConfigurationError("MODEL_ARMOR_MODE must be off, inspect, or block")
+        model_armor_template = None
+        if model_armor_mode != "off":
+            model_armor_template = text("MODEL_ARMOR_TEMPLATE")
+            if not TEMPLATE.fullmatch(model_armor_template):
+                raise ConfigurationError("MODEL_ARMOR_TEMPLATE must be projects/PROJECT/locations/LOCATION/templates/TEMPLATE")
+
         settings = cls(
             environment=text("ENVIRONMENT"),
             release_version=text("RELEASE_VERSION"),
@@ -141,6 +159,7 @@ class Settings:
             admission_limit=integer("ADMISSION_LIMIT", 3, 1, 64),
             request_deadline_seconds=integer("REQUEST_DEADLINE_SECONDS", 120, 10, 600),
             stall_timeout_seconds=integer("STALL_TIMEOUT_SECONDS", 30, 1, 300),
+            first_token_timeout_seconds=integer("FIRST_TOKEN_TIMEOUT_SECONDS", 90, 1, 600),
             context_tokens=integer("CONTEXT_TOKENS", 4096, 512, 131072),
             output_tokens=integer("OUTPUT_TOKENS", 384, 16, 8192),
             passage_tokens=integer("PASSAGE_TOKENS", 1200, 0, 65536),
@@ -156,9 +175,14 @@ class Settings:
             retrieval_top_k=integer("RETRIEVAL_TOP_K", 5, 1, 5),
             relevance_floor=fraction("RELEVANCE_FLOOR", "0.65"),
             similarity_floor=fraction("SIMILARITY_FLOOR", "0.60"),
+            model_armor_mode=model_armor_mode,
+            model_armor_template=model_armor_template,
         )
         if settings.output_tokens + settings.passage_tokens >= settings.context_tokens:
             raise ConfigurationError("OUTPUT_TOKENS plus PASSAGE_TOKENS must be less than CONTEXT_TOKENS")
         if settings.stall_timeout_seconds >= settings.request_deadline_seconds:
             raise ConfigurationError("STALL_TIMEOUT_SECONDS must be less than REQUEST_DEADLINE_SECONDS")
+        if not settings.stall_timeout_seconds <= settings.first_token_timeout_seconds < settings.request_deadline_seconds:
+            raise ConfigurationError("FIRST_TOKEN_TIMEOUT_SECONDS must be at least STALL_TIMEOUT_SECONDS "
+                                     "and less than REQUEST_DEADLINE_SECONDS")
         return settings

@@ -24,6 +24,7 @@ function errorMessage(error: unknown): string {
   switch (error.detail) {
     case 'question_empty': return 'Enter a question before sending.';
     case 'question_too_long': return 'Your question is too long. Keep it to 2,000 characters.';
+    case 'blocked_by_policy': return 'This question was blocked by the content policy. Rephrase it and try again.';
     case 'model_unavailable': return 'The model is unavailable. Please try again later.';
     case 'retrieval_unavailable': return 'Documentation retrieval is unavailable. Please try again later.';
     case 'upstream_failed': return 'The model request failed before an answer could be returned.';

@@ -60,6 +60,7 @@ If you disconnect, rag-api closes its request to the model server, which frees t
 | `ADMISSION_LIMIT` | `3` | Generations one replica runs at once |
 | `REQUEST_DEADLINE_SECONDS` | `120` | Longest a request may take, from arrival to the terminal event |
 | `STALL_TIMEOUT_SECONDS` | `30` | Longest wait for the next token |
+| `FIRST_TOKEN_TIMEOUT_SECONDS` | `90` | Longest wait for the first token, which covers waiting for a free model slot and processing the prompt. At least the stall timeout and below the deadline |
 | `CONTEXT_TOKENS`, `OUTPUT_TOKENS` | `4096`, `384` | The model slot's size and the tokens reserved for the answer |
 | `PASSAGE_TOKENS` | `1200` | Most tokens retrieved passages may use; the lowest-ranked are dropped first |
 | `HISTORY_TURNS` | `2` | Most earlier question-and-answer turns kept in the prompt |
@@ -77,10 +78,24 @@ If you disconnect, rag-api closes its request to the model server, which frees t
 | `RETRIEVAL_TOP_K` | `5` | Passages retrieved, at most 5, because citations run from `[S1]` to `[S5]` |
 | `RELEVANCE_FLOOR` | `0.65` | When the best passage scores below this, the question gets no passages and a general answer |
 | `SIMILARITY_FLOOR` | `0.60` | A single passage below this cosine similarity is dropped |
+| `MODEL_ARMOR_MODE` | `off` | `off`, `inspect`, or `block`; see [Model Armor](#model-armor) |
+| `MODEL_ARMOR_TEMPLATE` | unset | The template's full name, `projects/PROJECT/locations/LOCATION/templates/TEMPLATE`; required unless the mode is `off` |
 
 Invalid settings stop the process with exit code 2 and a JSON error that names the field without echoing its value. `OUTPUT_TOKENS` plus `PASSAGE_TOKENS` must stay below `CONTEXT_TOKENS`, and the stall timeout below the deadline.
 
 Logs never contain question or answer text. Each answer logs one `chat_completed` line with its request ID, outcome, time to first token, token counts, passage count, invalid citations, and prompt version.
+
+## Model Armor
+
+With `MODEL_ARMOR_MODE` set to `inspect` or `block`, rag-api screens three things with [Model Armor](https://docs.cloud.google.com/model-armor/overview), using the template named in `MODEL_ARMOR_TEMPLATE`:
+
+| Point | When | In block mode |
+| --- | --- | --- |
+| Question | While passages are retrieved, so the check adds little wait | A flagged question is refused with 422 `blocked_by_policy` |
+| Each retrieved passage | After retrieval, all at once | A flagged passage is dropped before the prompt is built, which keeps instructions planted in a document away from the model |
+| Answer | After the last token, before the `done` event | The answer was already streamed; `done` carries `policy: {"withheld": true, "filters": [...]}`, the interface replaces the text with a notice, and the saved answer is the notice |
+
+In `inspect` mode nothing changes for the user: every check is recorded and nothing is blocked. If Model Armor cannot be reached, the request carries on unscreened and the check counts as `unavailable`. rag-api authenticates as its Pod's Workload Identity, through the GKE metadata server. Metrics `rag_guardrail_checks_total{point, result}` and `rag_guardrail_seconds{point}` record every check; a flagged check is logged with the names of the filters that matched, never the text.
 
 ## Running it locally
 
@@ -108,7 +123,7 @@ From `apps/rag-api/`:
 .venv/bin/python -m pip check
 ```
 
-85 tests pass for me, and 4 tests that need a real server or database are skipped. The tests use a fake model server that speaks llama.cpp's routes and stream format and can stream, fail mid-stream, stall, end without a finish reason, refuse, or be unreachable. Every stream test checks that the stream ends with exactly one terminal event and that the request to the model server was closed. The process test starts the real server and sends it SIGTERM during an answer; it is skipped where the environment does not allow binding a local socket.
+90 tests pass for me, and 4 tests that need a real server or database are skipped. The tests use a fake model server that speaks llama.cpp's routes and stream format and can stream, fail mid-stream, stall, end without a finish reason, refuse, or be unreachable. Every stream test checks that the stream ends with exactly one terminal event and that the request to the model server was closed. The process test starts the real server and sends it SIGTERM during an answer; it is skipped where the environment does not allow binding a local socket.
 
 The contract tests check the fake server's assumptions against a real llama.cpp: the stream format, that the template-aware token count equals the prompt size the server reports, and that closing a stream frees the server's slot. Run them with the local model server above whenever the llama.cpp image changes:
 

@@ -23,6 +23,7 @@ READINESS_PATH = "/readyz"
 LOG_FIELDS = (
     "request_id", "method", "path", "status", "duration_ms", "error_type", "outcome",
     "ttft_ms", "prompt_tokens", "generated_tokens", "passages", "invalid_citations", "prompt_version",
+    "point", "filters", "policy_mode",
 )
 
 

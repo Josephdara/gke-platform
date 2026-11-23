@@ -31,13 +31,14 @@ class RecordingStream(httpx.AsyncByteStream):
 
 class FakeModelServer:
     def __init__(self, tokens=("Pods ", "restart ", "[S1]."), mode="normal", fail_after=1,
-                 delay=0.0, finish_reason="stop", healthy=True):
+                 delay=0.0, finish_reason="stop", healthy=True, first_delay=0.0):
         self.tokens = list(tokens)
         self.mode = mode
         self.fail_after = fail_after
         self.delay = delay
         self.finish_reason = finish_reason
         self.healthy = healthy
+        self.first_delay = first_delay
         self.chat_bodies: list[dict] = []
         self.streams: list[RecordingStream] = []
 
@@ -71,6 +72,8 @@ class FakeModelServer:
         return httpx.Response(404)
 
     async def events(self):
+        if self.first_delay:
+            await asyncio.sleep(self.first_delay)
         for index, token in enumerate(self.tokens):
             if index == self.fail_after and self.mode == "fail_mid":
                 raise httpx.ReadError("connection reset")

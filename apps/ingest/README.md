@@ -42,7 +42,7 @@ pgvector creates two roles on first start, from its [init script](../../platform
 | `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER` | `5432`, `rag`, `ingest` | |
 | `REPORT_BUCKET` | Unset | The evidence bucket for the run report |
 | `CHUNK_TOKENS`, `OVERLAP_TOKENS` | `300`, `40` | Chunk size and overlap in model tokens |
-| `EMBED_BATCH` | `16` | Chunks per embedding request, at most 32 |
+| `EMBED_BATCH` | `16` | Chunks per embedding request, at most 32. A request the embeddings server refuses with 429 is retried up to 5 times, after its `Retry-After` or a doubling wait of at most 30 seconds |
 | `MAX_FILE_BYTES`, `PARSE_SECONDS` | `2000000`, `10` | Limits for one file |
 
 ## Running it locally
@@ -90,7 +90,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip check
 ```
 
-35 tests pass for me, and 3 database tests are skipped. The tests use a fake embeddings server and an in-memory store. The database tests run migrations, reruns, revision switches, and retirements against a real pgvector, and check that `rag_api` cannot change the corpus or the schema and that `ingest` cannot manage roles. They empty the database's documents and conversations, so run them only against the local stack:
+36 tests pass for me, and 3 database tests are skipped. The tests use a fake embeddings server and an in-memory store. The database tests run migrations, reruns, revision switches, and retirements against a real pgvector, and check that `rag_api` cannot change the corpus or the schema and that `ingest` cannot manage roles. They empty the database's documents and conversations, so run them only against the local stack:
 
 ```sh
 INGEST_TEST_DATABASE_URL="postgresql://ingest:$(cat ../.local/pgvector/ingest)@127.0.0.1:15432/rag" \

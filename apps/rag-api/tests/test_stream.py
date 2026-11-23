@@ -74,6 +74,12 @@ def test_failures_end_with_exactly_one_error_event(make_app, model, overrides, r
         assert model.closed
 
 
+def test_a_slow_first_token_is_allowed_its_own_timeout(make_app):
+    model = FakeModelServer(first_delay=1.5)
+    response, _ = ask(make_app(model, stall_timeout_seconds=1, first_token_timeout_seconds=3, request_deadline_seconds=5))
+    assert terminal_events(parse_events(response.text))[0][1]["status"] == "complete"
+
+
 def test_unreachable_model_is_refused_before_streaming(make_app):
     response, active = ask(make_app(FakeModelServer(mode="unreachable")))
     assert response.status_code == 503

@@ -1,0 +1,3 @@
+# Accepted Trivy vulnerability findings for the loadgen image. Each entry needs a statement and an
+# expired_at date, after which the finding fails the build again.
+vulnerabilities: []
