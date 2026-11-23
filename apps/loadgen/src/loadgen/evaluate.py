@@ -59,7 +59,7 @@ def scores(results: list[dict]) -> dict:
 def review_sheet(results: list[dict], manifest: dict) -> str:
     lines = [f"# Evaluation review: {manifest['questionSet']} on {manifest['startedAt'][:10]}", "",
              f"Prompt {manifest['promptVersion']}, model {manifest['model']}, corpus {manifest['corpus']}, "
-             f"revision {manifest['gitRevision']}.", "",
+             f"loadgen's checkout {manifest['runnerGitRevision']}.", "",
              "For each question, set the verdict in results.json and note why here.", ""]
     for r in results:
         sample, checks = r["sample"], r["checks"]

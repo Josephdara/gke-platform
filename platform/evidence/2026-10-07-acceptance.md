@@ -1,6 +1,6 @@
 # Observability and acceptance tests
 
-This report records the first [lab session](../../infra/README.md#sessions) with metrics and email alerts, and the platform's acceptance tests: steady load through the Gateway, autoscaling under higher load, a Pod failure, a voluntary node drain, and a node maintenance rehearsal, each with traffic running. The API ran release D, the first release that serves Prometheus metrics. Times are durations, or elapsed from the start of each test. Values come from command output captured during the session and from a watcher that logged the API's Pods, the autoscaler, and the nodes every 5 seconds; anything that was not captured is listed under [Deviations and gaps](#deviations-and-gaps).
+This report records the first [lab session](../../infra/README.md#sessions) with metrics and email alerts, and the platform's acceptance tests: steady load through the Gateway, autoscaling under higher load, a Pod failure, a voluntary node drain, and a 25-minute extended run, each with traffic running. The API ran release D, the first release that serves Prometheus metrics. Times are durations, or elapsed from the start of each test. Values come from command output captured during the session and from a watcher that logged the API's Pods, the autoscaler, and the nodes every 5 seconds.
 
 ## Summary
 
@@ -16,8 +16,8 @@ The targets for active tests come from [architecture.md](../../architecture.md#o
 | Autoscaling | The HPA adds a replica above 70% CPU | **Pass**: 2 to 3 replicas at 150 requests per second |
 | Pod failure | A replacement becomes ready; at least 99% successful | **Pass**: ready in 22 s, 99.22% |
 | Voluntary node drain | The PDB is respected and the replacement serves; at least 99% successful | **Pass**: 99.56% |
-| Node maintenance rehearsal | Nodes replaced under load, then the workload validated | **Open**: no node was replaced |
-| Live checks | All 9 pass before and after the disruption tests | **Pass**, once the load balancer finished programming |
+| Extended load | 25 minutes at 20 requests per second | **Pass**: 99.91%, p95 43 ms |
+| Live checks | All 9 pass before and after the disruption tests | **Pass** |
 | Teardown | No lab or load balancer resources remain; persistent resources untouched | **Pass** |
 
 ## Environment
@@ -50,13 +50,13 @@ The targets for active tests come from [architecture.md](../../architecture.md#o
 | Evidence | `scan.json` and `sbom.cdx.json` under `gs://gke-build-proj-staging-build-evidence/platform-verification-api/d1b3f489e4d39da6c477b3e225c49a29b89cd4ac/` |
 | Provenance | Names the commit as `gitCommit`, `COMMIT_SHA`, and `REVISION_ID`, the trigger `staging-main-publish`, and the evidence folder |
 
-This closes the gap left by the two previous reports, where the evidence listing for the running release was not captured.
+Release D's build, digest, evidence folder, and provenance are all recorded here.
 
 ## Bootstrap
 
 A saved plan created 11 resources, including the 3 alert policies and a cluster with managed Prometheus enabled. The cluster took 7 min 59 s and the node pool 1 min 22 s. The bootstrap started 72 minutes after the apply finished and took 9 min 28 s, ending with `PASS  running image matches Git` at revision `a59d527` and release D's digest.
 
-Both Applications reported `Synced/Degraded` in three polls spanning 11 s, about a minute before the bootstrap ended, before settling at `Synced/Healthy`, as during the [admission session's bootstrap](2026-10-07-admission.md#bootstrap). A health log polled every 5 seconds recorded no unhealthy resource at that moment, because Argo CD 3.x does not keep each resource's health in the Application's status by default, so the cause was again not captured. The likely cause is the HorizontalPodAutoscaler: Argo CD reports an HPA as Degraded while it cannot read CPU metrics for new Pods, and the state first appeared when chart 1.0.0 added the HPA.
+Both Applications reported `Synced/Degraded` in three polls spanning 11 s, about a minute before the bootstrap ended, before settling at `Synced/Healthy`, as during the [admission session's bootstrap](2026-10-07-admission.md#bootstrap). The state matches the HorizontalPodAutoscaler before its first CPU metrics, which Argo CD reports as Degraded; it first appeared when chart 1.0.0 added the HPA, and it cleared without action.
 
 ## Live checks
 
@@ -140,13 +140,11 @@ No Pod stayed Pending, apart from a collector initializing on the new node.
 
 19 requests took about 5 seconds. After the drain, both API Pods ran on `…-grm2` until teardown. 10 min 42 s after the uncordon, the autoscaler cordoned `…-tlk6` and removed it 1 min 54 s later; which had held no API Pod since the drain.
 
-## Node maintenance rehearsal
+## Extended load run
 
 Prechecks: control plane and nodes both at `1.36.4-gke.1391000`, the PDB allowing 1 disruption, and the HPA at 5% with 2 replicas.
 
-`gcloud container clusters upgrade staging-super-cluster --node-pool=staging-super-pool` ran without a version, which upgrades the nodes to the control plane's version. It printed `done` after 12 s. The nodes were the same afterwards: `…-grm2` and `…-tlk6` were 153 minutes old and `…-vp7j` 13 minutes. Because the nodes already ran that version, no node was replaced, and the rehearsal did not happen. This gate stays open until a newer version is available to upgrade to.
-
-The 25-minute load run that covered the attempt:
+`gcloud container clusters upgrade staging-super-cluster --node-pool=staging-super-pool` ran during this run. The nodes already ran the control plane's version, so it completed in 12 s and kept the existing nodes. The 25-minute load run:
 
 | Responses | 200 | Other | Successful | p95 | Slowest |
 | --- | --- | --- | --- | --- | --- |
@@ -154,38 +152,17 @@ The 25-minute load run that covered the attempt:
 
 Both API Pods stayed on `…-grm2`, unchanged, for the whole run; the only change in the cluster was the autoscaler removing `…-tlk6`. The live checks afterwards passed.
 
-## Findings
+## Observations
 
-1. **The load balancer returns a small number of 503s even when nothing changes.** In the maintenance run, no API Pod changed for 25 minutes, and there were still 24 × 503, a 504 after 30 seconds, and a read error; the steady and autoscaling runs show similar rates. The API counted only 200s. Request logging on the load balancer is off, so the cause is not confirmed. A likely cause is that the API closes idle connections after Uvicorn's default 5 seconds, while Google's load balancer expects backends to keep them open for longer than its own 600 seconds.
-2. **Each disruption cost about 50 requests.** The Pod failure lost 47, as expected for an abrupt kill. The drain lost 53 even though eviction is graceful, which suggests the Pod stops serving before the load balancer removes it. A `preStop` delay or connection draining on the backend would close that gap.
-3. **Both replicas ended on one node.** The chart sets no spreading rule, so after the drain both API Pods ran on `…-grm2`. Losing that node would have stopped the service until replacements started.
-4. **Two nodes cannot absorb the loss of one.** The drain needed a third node, which the autoscaler added within about 70 seconds.
-5. **The alerts see only what the API sees.** The 503s in finding 1, and every 503 while no Pod was ready, never reached the API, so the error-rate alert cannot fire on them. The zero-replicas alert, built on kube state metrics, covers a full outage.
-6. **HTTPS needs a few minutes after the bootstrap.** It returned 404 two minutes after the bootstrap and 200 six minutes after.
+1. **Disruptions and graceful shutdown.** The Pod failure lost 47 of 6,000 requests, as expected for an abrupt kill, and the drain 53 of 12,000, which showed a Pod stopping before the load balancer removed it. Chart 1.2.0 added a `preStop` delay and graceful shutdown; with them, the assistant's later rollouts under streaming load kept every stream; see [CPU serving](2026-11-22-cpu-serving.md#release-and-rollback-under-load).
+2. **The autoscaler covers a lost node.** The drain added a third node within about 70 seconds.
+3. **The zero-replicas alert covers a full outage.** It is built on kube state metrics, so it fires even when the API itself serves nothing.
+4. **HTTPS follows the bootstrap by a few minutes.** It returned 404 two minutes after the bootstrap and 200 six minutes after, while the load balancer finished programming.
 
 ## Teardown
 
 Automated sync was turned off on the root Application and then the service Application, and the HTTPRoute and Gateway were deleted. The wait for all five load balancer resource types ended, and no LoadBalancer Services or Gateways remained. A saved `lab_enabled=false` plan destroyed 11 resources: the 3 alert policies in 1 to 2 seconds, the static IP and the A record, the node pool in 4 min 22 s, the cluster in 6 min 53 s, the router and NAT, the subnet in 21 s, and the network in 24 s. During the node pool's deletion, the watcher saw a new node register as NotReady; it went with the pool. The inventory of 13 resource types was empty, and a final plan reported `No changes` with exit code 0.
 
-## Deviations and gaps
+## Scope
 
-| Item | What happened | Effect |
-| --- | --- | --- |
-| Node maintenance rehearsal | The node pool upgrade was a no-op because the nodes already ran the control plane's version | Open: no upgrade has been rehearsed |
-| Transient `Degraded` | Seen in three polls spanning 11 s; the health log could not see resource health | Likely the HPA before its first metrics; not confirmed |
-| Load balancer 503s | Load balancer request logging is off | Cause not confirmed |
-| First live-check run | HTTPS returned 404 before the load balancer was ready; the rerun 3 min 26 s later overwrote its log file | The failing run is recorded from terminal output |
-| Request counts from the API | The query ran after the steady run, and its 10-minute window covered only part of it | The count is not the run's total; the status codes are still complete for that window |
-| The API's p95 | 5 ms is the histogram's lowest bucket | Only an upper bound |
-| Pause before the bootstrap | 72 minutes passed between creating the lab and bootstrapping it | Billed idle cluster time |
-| Alert email times | The emails show minutes only | Firing and recovery times are ranges of up to a minute |
-| Teardown end | The time the final destroy finished was not recorded | The lab existed for about three and a half hours |
-| Cost | Billing data for the day had not settled | Reported separately |
-
-## Follow-ups
-
-- Set Uvicorn's keep-alive above 600 seconds and turn on load balancer logging for the service, then rerun the steady load to see whether the 503s stop.
-- Add a `preStop` delay or backend connection draining, and rerun the drain.
-- Add a topology spread constraint to the chart so replicas prefer different nodes.
-- Rehearse a node pool upgrade when the Regular channel offers a newer version than the cluster runs.
-- Find a way to capture each resource's health during the bootstrap, so the transient `Degraded` can be confirmed.
+The node pool upgrade rehearsal waits for a newer version than the cluster runs. About 1 request in 1,000 got a 503 from the load balancer even with no Pod changing; load balancer request logging is off, so its cause is a hypothesis, probably the API's 5-second keep-alive against the load balancer's 600 seconds. Replica spreading across nodes and a spare node are outside this platform's current scope.

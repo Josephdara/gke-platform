@@ -396,14 +396,14 @@ Before you start, the one-time setup is complete, the certificate is `ACTIVE`, t
 
 **1. Check the budget** still belongs to the project's billing account.
 
-**2. Create the lab.** Expect 11 resources to add, including 3 alert policies:
+**2. Create the lab.** Expect 12 resources to add, including 3 alert policies and the `api` and `assistant` DNS records:
 
 ```bash
 terraform -chdir=infra/env/staging plan -var=lab_enabled=true -out=../../private/lab-on.tfplan
 terraform -chdir=infra/env/staging show ../../private/lab-on.tfplan
 ```
 
-For an inference session, plan with the inference flag instead. Expect 15 resources to add: the same 11, plus `staging-infer-cpu-pool` and the private `staging-googleapis` zone with its two records:
+For an inference session, plan with the inference flag instead. Expect 16 resources to add: the same 12, plus `staging-infer-cpu-pool` and the private `staging-googleapis` zone with its two records:
 
 ```bash
 terraform -chdir=infra/env/staging plan -var=lab_enabled=true -var=inference_cpu_enabled=true -out=../../private/lab-on.tfplan
@@ -449,9 +449,9 @@ The script creates test Pods, a temporary namespace and the `staging-debug` serv
 
 ### Run the assistant
 
-In a session with `inference_cpu_enabled=true`, the profile also deploys pgvector, ingest, and rag-api. The lab creates an A record for `assistant.staging.<your domain>` as well as `api`, so expect 16 resources to add.
+In a session with `inference_cpu_enabled=true`, the profile also deploys pgvector, ingest, and rag-api.
 
-**1. Wait** until `staging-profile` and its Applications are `Synced/Healthy`:
+**1. Wait** until `staging-profile` and its Applications are `Synced/Healthy`. For a few minutes after the bootstrap, `staging-llm-cpu` and `staging-pgvector` can show `Unknown` with `project staging-inference which does not exist`: the profile created them before `staging-platform` created their project. Argo CD retries, and it clears without action.
 
 ```bash
 kubectl --context "$CONTEXT" -n argocd get applications.argoproj.io
@@ -567,7 +567,7 @@ gcloud compute network-endpoint-groups list --project="$PROJECT_ID" --format="va
 gcloud compute network-endpoint-groups delete NEG_NAME --zone="$ZONE" --project="$PROJECT_ID" --quiet
 ```
 
-**3. Remove the lab.** Expect 11 resources to destroy, all of them lab resources, or 15 after an inference session:
+**3. Remove the lab.** Expect 12 resources to destroy, all of them lab resources, or 16 after an inference session:
 
 ```bash
 terraform -chdir=infra/env/staging plan -var=lab_enabled=false -out=../../private/lab-off.tfplan

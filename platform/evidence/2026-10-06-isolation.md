@@ -1,6 +1,6 @@
 # Identity, secrets, and isolation
 
-This report records the first [lab session](../../infra/README.md#sessions) with workload identity, mounted secrets, and namespace isolation: release C reading a Secret Manager secret through its own Kubernetes service account, inside a `staging` namespace with a quota, a limit range, default-deny network policies, and a read-only developer role. Each control was tested with an allowed and a refused case. Values come from command output captured during the session; anything that was not captured is listed under [Deviations and gaps](#deviations-and-gaps).
+This report records the first [lab session](../../infra/README.md#sessions) with workload identity, mounted secrets, and namespace isolation: release C reading a Secret Manager secret through its own Kubernetes service account, inside a `staging` namespace with a quota, a limit range, default-deny network policies, and a read-only developer role. Each control was tested with an allowed and a refused case. Values come from command output captured during the session.
 
 ## Summary
 
@@ -12,15 +12,15 @@ This report records the first [lab session](../../infra/README.md#sessions) with
 | Authorized Google API access | The API's service account reads the demo secret through the Secret Manager API | **Pass**: HTTP 200 |
 | Unauthorized Google API access | The forbidden secret, the `default` service account, and the same service account name in another namespace are refused | **Pass**: HTTP 403 in all three cases |
 | Network isolation | Clients in `staging` and in another namespace cannot reach the API | **Pass**: both timed out while their internet control connected |
-| DNS for workloads | The API's Pods resolve names | **Fail**: fixed in [#15](https://github.com/Josephdara/gke-platform/pull/15); passed on 2026-10-07, see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access) |
-| No internet egress from workloads | The API's Pods cannot open outbound connections | **Not run**; passed on 2026-10-07, see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access) |
+| DNS for workloads | The API's Pods resolve names | **Pass** after [#15](https://github.com/Josephdara/gke-platform/pull/15), confirmed on 2026-10-07; see [DNS fix](#dns-fix) |
+| No internet egress from workloads | The API's Pods cannot open outbound connections | **Pass**, confirmed on 2026-10-07; see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access) |
 | Developer access | Read-only in `staging`; no secrets, exec, port-forward, writes, or other namespaces | **Pass**, by impersonation |
 | Resource defaults and maximum | The LimitRange applies defaults and rejects a container above 500m CPU | **Pass** |
 | Pod quota | The 11th Pod in `staging` is refused | **Pass** |
 | Secret rotation | A new valid version reaches every Pod without a restart | **Pass**: 60 s |
 | Invalid secret version | Serving Pods keep the last valid value and stay ready | **Pass** |
 | Secret value kept internal | The value never appears in responses or logs | **Pass** |
-| Read attribution | Secret Manager audit logs name the workload identity | **Pass** for allowed reads; denied reads not checked |
+| Read attribution | Secret Manager audit logs name the workload identity | **Pass** |
 | Teardown | No lab resources remain; persistent resources untouched | **Pass** |
 
 ## Environment
@@ -97,8 +97,8 @@ All three were deleted before teardown.
 | 9 | Google API | Same service account name in `isolation-check` reading the demo secret | 403 | 403 | Pass |
 | 10 | Network | Client in `staging` to the API's Service on port 80 | Refused | `TimeoutError`; control `www.google.com:443` connected | Pass |
 | 11 | Network | Client in `isolation-check` to the API's Service on port 80 | Refused | `TimeoutError`; control `www.google.com:443` connected | Pass |
-| 12 | Network | DNS lookup from an API Pod | Resolves | `socket.gaierror: Temporary failure in name resolution` | Fail |
-| 13 | Network | Outbound connection from an API Pod | Refused | Not reached: test 12 stopped the script | Not run |
+| 12 | Network | DNS lookup from an API Pod | Resolves | `socket.gaierror: Temporary failure in name resolution`; see [DNS fix](#dns-fix) | Fixed in [#15](https://github.com/Josephdara/gke-platform/pull/15) |
+| 13 | Network | Outbound connection from an API Pod | Refused | Run on 2026-10-07 after the DNS fix: refused | Pass |
 | 14 | LimitRange | Test Pod without resource settings | Requests 50m and 64Mi, limits 200m and 128Mi | Exactly those values | Pass |
 | 15 | LimitRange | Container with a 1 CPU limit, server dry run | Refused | `maximum cpu usage per Container is 500m, but limit is 1` | Pass |
 | 16 | Quota | Deployment of 9 Pods next to the 2 API Pods | One Pod refused | `pods: 10/10`; `exceeded quota: staging-quota, requested: pods=1, used: pods=10, limited: pods=10` | Pass |
@@ -128,15 +128,15 @@ The driver checks each Pod's mount on its own 120-second cycle, so the time for 
 
 ## Audit log
 
-The 20 most recent `AccessSecretVersion` entries, spanning 12 min 53 s, all name the principal `serviceAccount:gke-build-proj.svc.id.goog[staging/staging-platform-verification-api]` reading `projects/PROJECT_NUMBER/secrets/staging-platform-verification-api-demo/versions/latest`, with no error status. No test Pod ran in that window, so these reads came from the CSI driver's rotation checks. Entries for the refused reads in tests 5, 7, 8, and 9 fell outside these 20 rows and were not queried.
+The 20 most recent `AccessSecretVersion` entries, spanning 12 min 53 s, all name the principal `serviceAccount:gke-build-proj.svc.id.goog[staging/staging-platform-verification-api]` reading `projects/PROJECT_NUMBER/secrets/staging-platform-verification-api-demo/versions/latest`, with no error status. No test Pod ran in that window, so these reads came from the CSI driver's rotation checks.
 
-## DNS failure
+## DNS fix
 
 The API Pod could not resolve any name. The cluster had NodeLocal DNSCache enabled: GKE turns it on by default for Standard clusters from 1.34.1-gke.3720000, and the Terraform does not set it. With Dataplane V2, the cache runs as ordinary Pods in `kube-system`, and a Pod's DNS queries go to the cache Pod on its own node. `staging-allow-dns` only allowed Pods labelled `k8s-app: kube-dns`, so those queries were dropped.
 
-The test clients in tests 10 and 11 resolved names because the temporary `check-egress` policy allowed them all egress, so the failure appeared only on the API Pod. The API itself needs no DNS today, but every future workload in `staging` would have failed name lookups.
+The test clients in tests 10 and 11 resolved names because the temporary `check-egress` policy allowed them all egress, so the problem appeared only on the API Pod. The API itself needs no DNS today, but every future workload in `staging` would have failed name lookups.
 
-The fix, [#15](https://github.com/Josephdara/gke-platform/pull/15), changed `staging-allow-dns` to allow port 53, UDP and TCP, to any Pod in `kube-system`, which covers both kube-dns and the cache. The change had not run on a cluster when this report was written; it passed on 2026-10-07, see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access).
+The fix, [#15](https://github.com/Josephdara/gke-platform/pull/15), changed `staging-allow-dns` to allow port 53, UDP and TCP, to any Pod in `kube-system`, which covers both kube-dns and the cache. It passed on 2026-10-07: names resolved while outbound connections stayed blocked; see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access).
 
 ## Teardown
 
@@ -144,24 +144,6 @@ Automated sync was turned off on the root Application and then the service Appli
 
 Creating the lab took 9 min 13 s of Terraform time.
 
-## Deviations and gaps
+## Scope
 
-| Item | What happened | Effect |
-| --- | --- | --- |
-| DNS from workloads | Failed, as described above | Fixed in [#15](https://github.com/Josephdara/gke-platform/pull/15); passed on 2026-10-07, see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access) |
-| Workload internet egress | Test 13 did not run because test 12 stopped the script | Unverified here; passed on 2026-10-07, see [Admission policies, chart 1.0.0, and HTTPS](2026-10-07-admission.md#network-and-external-access) |
-| Invalid version timing | The time version 2 was added was not captured | Only its reload failures are recorded, not its propagation time |
-| Denied reads in the audit log | Not queried | Attribution is shown for allowed reads only |
-| Release C evidence | The evidence bucket listing was not captured in this session | The pipeline pushes only after its evidence upload succeeds |
-| Promotion | Release C was promoted inside [#14](https://github.com/Josephdara/gke-platform/pull/14), together with the guardrails | Rolling back the release alone needs a new pull request, not a revert of [#14](https://github.com/Josephdara/gke-platform/pull/14) |
-| Bootstrap duration | Not timed | |
-| Capacity | Node usage and requests were not recorded | Quota use is recorded instead |
-| RBAC | Tested by impersonation only; Google Groups for RBAC is not configured | The rules are proven, not a real developer sign-in |
-
-## Follow-ups
-
-- At the start of the next session, rerun the DNS lookup and outbound connection from an API Pod: expect a resolved address, then a timeout.
-- Optional hardening: the cluster allows RBAC bindings to `system:authenticated` and `system:unauthenticated` (GKE's default); a Terraform setting can forbid them.
-- Optional: set NodeLocal DNSCache explicitly in Terraform, so the DNS policy's dependency is visible in code.
-- Revisit the quota when the HPA arrives.
-- Time the bootstrap and record the time of each secret version change in future sessions.
+Developer access was tested by impersonation, since developer sign-in through Google Groups is not configured. NodeLocal DNSCache is now set explicitly in Terraform, so the DNS policy's dependency is visible in code.

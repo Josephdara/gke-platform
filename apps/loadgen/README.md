@@ -47,7 +47,7 @@ Replace the URL, `USERNAME`, and `PASSWORD_FILE` with your own. Each run writes 
 | `load` | `samples.jsonl`, one line per request as it finishes, and `summary.json` with the manifest, counts per outcome, p50 and p95 of time to first token and total time for answered requests, and every failed request's ID |
 | `eval` | `results.json`, with the manifest, the automatic scores, and every question's sample, checks, and an empty review verdict, and `review.md`, the answers laid out for a reviewer |
 
-Every manifest records the Git revision, prompt version, model, question set version, and corpus revision. Load questions cycle through the `answerable` questions; `--kinds` changes that. Each question starts a new conversation, so a run adds conversations to the account.
+Every manifest records the prompt version, model, question set version, and corpus revision, and `runnerGitRevision`: the commit checked out where loadgen ran, which is not necessarily the one deployed. Record the deployed revision from Argo CD alongside the results. Load questions cycle through the `answerable` questions; `--kinds` changes that. Each question starts a new conversation, so a run adds conversations to the account.
 
 ## Scoring the evaluation
 
