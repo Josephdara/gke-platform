@@ -927,6 +927,12 @@ curl -s -X POST "https://modelarmor.$REGION.rep.googleapis.com/v1/${TEMPLATE}:sa
 
 `filterMatchState` is `MATCH_FOUND` for a flagged text. During a session, the dashboard's Model Armor panels show every check by point and result, and rag-api logs each flagged check as `guardrail_flagged` with the filters that matched.
 
+The template also logs every operation to Cloud Logging, **including the screened text**: the question, passages, or answer. Read the violations from the last 6 hours:
+
+```bash
+gcloud logging read 'logName:"modelarmor.googleapis.com" AND jsonPayload.sanitizationResult.filterMatchState="MATCH_FOUND"' --project="$PROJECT_ID" --freshness=6h --limit=20
+```
+
 ### Investigate an alert
 
 Terraform creates these alerts with the lab. They email the `staging-alerts` channel:

@@ -31,9 +31,11 @@ resource "google_model_armor_template" "assistant" {
     }
   }
 
-  # Model Armor's own logging of screening operations would record the screened text.
+  # Model Armor logs every screening operation, including the screened text, to Cloud Logging, so
+  # each violation can be reviewed in staging. Staging screens only the evaluation set, the corpus
+  # and test questions.
   template_metadata {
-    log_sanitize_operations = false
+    log_sanitize_operations = true
     log_template_operations = false
   }
 

@@ -7,6 +7,11 @@ kind: Kustomization
 resources:
   - https://raw.githubusercontent.com/GoogleCloudPlatform/k8s-stackdriver/8df08ef6debe7681c329f31ad256beef59d421ad/custom-metrics-stackdriver-adapter/deploy/production/adapter_new_resource_model.yaml
 
+# Scaled to zero to test the HPA without its metrics adapter; restored afterward.
+replicas:
+  - name: custom-metrics-stackdriver-adapter
+    count: 0
+
 images:
   - name: gcr.io/gke-release/custom-metrics-stackdriver-adapter
     newName: us-east4-docker.pkg.dev/gke-build-proj/staging-mirror/gke-release/custom-metrics-stackdriver-adapter
