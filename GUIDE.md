@@ -710,6 +710,15 @@ Model Armor screens the inference workload's traffic for prompt injection, jailb
 
 ### How it is configured
 
+```mermaid
+flowchart LR
+    API["rag-api Pod"] -->|"modelarmor.us-east4.rep.googleapis.com"| Zone["Private DNS zone for that hostname"]
+    Zone -->|"10.40.0.250"| PSC["Private Service Connect endpoint"]
+    PSC --> MA["Model Armor in us-east4"]
+    API -->|"other *.googleapis.com names"| GZone["Private zone for googleapis.com"]
+    GZone -->|"private.googleapis.com, 199.36.153.8/30"| APIs["Other Google APIs"]
+```
+
 - **Template**: Terraform creates `staging-assistant` in `us-east4`, the same region as the cluster. It persists between sessions, and it logs every screening operation to Cloud Logging so each violation can be reviewed; staging screens only test traffic.
 - **Identity**: rag-api's Kubernetes service account calls the API as its Workload Identity principal, which holds `roles/modelarmor.user` and nothing else for Model Armor. No key is stored anywhere.
 - **Private path**: a template only answers on its regional hostname, `modelarmor.us-east4.rep.googleapis.com`. The lab's private zone for `googleapis.com` sends Google API names to `private.googleapis.com`, which does not serve regional hostnames, so each inference lab also creates a regional Private Service Connect endpoint at the fixed address `10.40.0.250` and a private DNS zone for that one hostname. Cloud DNS answers from the most specific zone, so every other Google API keeps its existing path.
@@ -771,8 +780,8 @@ Through 2026-10-06, the billing export showed $6.92 before credits, $5.80 of it 
 | Inference foundation | Model servers scale from zero inference nodes and are ready in about 105 seconds with verified model downloads; inference admission policies, Workload Identity, and the scaling metric pass; [inference foundation report](platform/evidence/2026-11-19-inference-foundation.md) |
 | Assistant release and rollback | 177 and 203 streamed requests with no stream cut, about 4 minutes from merge to healthy, and in-flight answers drained from terminating Pods; [CPU serving report](platform/evidence/2026-11-22-cpu-serving.md) |
 | Assistant evaluation | A correct source for 20 of 20 answerable questions, no invented citations, and identical answers across repeated runs |
-| Inference scaling | A second llm-cpu replica ready 39 seconds after load rose; a 158-request flood refused cleanly with 429 and flat memory; replicas held when the scaling metric was lost; [CPU scaling and reliability report](platform/evidence/2026-11-24-cpu-scaling-and-reliability.md) |
-| Inference failure recovery | Pod deletion, node drain, and a forced kill under load handled without dropped requests; a model revision with a wrong checksum refused and reverted by Git; the vector database deleted and restored with identical chunks |
+| Inference scaling | A second llm-cpu replica ready 39 seconds after load rose; a 158-request flood refused cleanly with 429 and flat memory; a lost scaling metric reported as `ScalingActive=False` and matched by its alert, with the HPA fixed at 2 replicas; [CPU scaling and reliability report](platform/evidence/2026-11-24-cpu-scaling-and-reliability.md) |
+| Inference failure recovery | Pod deletion and a node drain under load completed without request errors, and a forced kill ended the partial answer with an explicit `stalled` state; a model revision with a wrong checksum refused and reverted by Git; the vector database deleted and restored with identical chunks |
 | Model Armor | Reachable privately through Private Service Connect, about 0.25 seconds added to the first token, and the injected passage in the evaluation dropped before the model saw it |
 
 The platform runs as one zonal staging environment that exists only during lab sessions. Node upgrades, load balancer error logging, replica spreading, a second service, answer quality on the CPU model, and the surge rollout of model-server chart 0.1.2 are the areas measured or configured but not yet addressed in a session; each report links its raw results.

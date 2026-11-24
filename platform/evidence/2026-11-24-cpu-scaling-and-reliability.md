@@ -1,6 +1,6 @@
 # CPU scaling and reliability: Model Armor in the VPC, autoscaling, failure recovery, and restore
 
-This report covers one [lab session](../../infra/README.md#sessions) on 2026-11-24, from 13:21 to 17:02 UTC, with the CPU inference platform in staging: the llm-cpu chat model and the embeddings server on the inference pool, pgvector, ingest, and rag-api behind the shared Gateway. Every change to the cluster was a merged pull request that Argo CD applied from Git. Model Armor screened traffic throughout, first recording verdicts and then blocking.
+This report covers one [lab session](../../infra/README.md#sessions) on 2026-11-24, from 13:21 to 17:02 UTC, with the CPU inference platform in staging: the llm-cpu chat model and the embeddings server on the inference pool, pgvector, ingest, and rag-api behind the shared Gateway. Every configuration change, including each configuration fault, was a merged pull request that Argo CD applied from Git; Pod deletions, the node drain, and the forced kills were run with `kubectl` under load. Model Armor screened traffic throughout, first recording verdicts and then blocking.
 
 The session measured fixed-replica baselines, a warm scale-up and cooldown, a request flood, Pod, node and dependency failures, a model revision with a wrong checksum, and a full delete and restore of the vector database. It ended with the 30-question [evaluation set](../../apps/loadgen/eval/questions.yaml) in blocking mode.
 
@@ -14,11 +14,11 @@ Values come from command output captured during the session, [loadgen](../../app
 | Model Armor overhead | Small next to time to first token | **Pass**: about 0.25 s at p50, under 2% of a 15 s first token |
 | Both replicas serve | Requests spread across two replicas | **Pass**: 40% and 60% of prompt tokens |
 | Replicas scale linearly | Same latency per replica at 1 and 2 replicas | **Pass**: time to first token p50 14.6 s and 15.2 s |
-| Warm scale-up | A second replica serving soon after load rises | **Pass**: HPA decision 8 s after the load began, second replica ready 39 s after it |
+| Warm scale-up | A second replica serving soon after load rises | **Pass**: triggered by running requests above 1.5 per Pod; HPA decision 8 s after the load began, second replica ready 39 s after it |
 | Overload refused cleanly | 429 responses, no errors, no memory growth | **Pass**: 116 of 158 requests refused in about 0.1 s; rag-api memory flat at 55 MiB |
-| Pod loss, graceful and forced | No dropped requests; streams end with a clear state | **Pass**: 0 errors in 19 requests; a stream cut by a forced kill ended as `stalled` and the UI marked it incomplete |
+| Pod loss, graceful and forced | Pod deletion and drain without request errors; a forced kill ends the stream in a clear state | **Pass**: 0 errors in 19 requests; a stream cut by a forced kill ended as `stalled` and the UI marked it incomplete |
 | Node drain with two replicas | The PDB allows it, traffic moves to the other replica | **Pass**: drained in 44 s with 0 errors |
-| Scaling metric lost | Replicas hold, the alert condition matches | **Pass**: `ScalingActive=False`, replicas held at 2 |
+| Scaling metric lost, with the HPA fixed at 2 replicas | The HPA reports the lost metric and the alert condition matches | **Pass**: `ScalingActive=False` with `FailedGetPodsMetric`; the alert query matched |
 | Retrieval dependency lost | A clear error, readiness unaffected | **Pass**: HTTP 503 in 5.0 s with a retrieval message; rag-api stayed ready |
 | Model revision with a wrong SHA-256 | The file is refused, Git revert restores service | **Pass**: refused at download; serving again 4 min 1 s after the revert merged |
 | Vector database restore | Same chunks after deleting the StatefulSet and its volume | **Pass**: 1,382 chunks with an identical ID fingerprint, 45 documents |
@@ -42,7 +42,7 @@ Values come from command output captured during the session, [loadgen](../../app
 | --- | --- |
 | Every Model Armor check from the cluster returned unavailable, and rag-api served unscreened as designed | A test call from the rag-api Pod failed TLS verification: the private Google APIs address (`private.googleapis.com`) does not serve regional `rep.googleapis.com` hostnames, which Model Armor templates require. Fixed in the running lab by [#51](https://github.com/Josephdara/gke-platform/pull/51), a Private Service Connect endpoint; checks succeeded 5 minutes after it merged |
 | The fallback recorded that a check failed, but not why | rag-api now logs `guardrail_unavailable` with the API method, error type, and HTTP status, never the screened text |
-| A model revision released at 1 replica took the chat model offline for 10 minutes | The chart's rollout allowed one Pod unavailable and no surge, so the only good Pod stopped before the new one proved itself. Chart 0.1.2 requires the new Pod to be ready first (`maxSurge: 1`, `maxUnavailable: 0`), and the inference pool's cap rises from 2 to 3 nodes so the surge Pod can always be scheduled |
+| A model revision released at 1 replica took the chat model offline for 10 minutes | The chart's rollout allowed one Pod unavailable and no surge, so the only good Pod stopped before the new one proved itself. Chart 0.1.2 requires the new Pod to be ready first (`maxSurge: 1`, `maxUnavailable: 0`), and the inference pool's cap rises from 2 to 3 nodes to leave room for the surge Pod |
 | The teardown's wait loop could not finish after an inference lab | The loop now skips the Private Service Connect forwarding rule, which Terraform removes in the next step |
 | Network endpoint groups deleted during teardown came back and blocked the network's deletion | GKE recreates them while the cluster runs. The [runbook](../../RUNBOOK.md#end-a-session) now deletes leftovers after the cluster is gone, then applies the lab-off plan once more; the second apply removed the network |
 | A restore into a fresh pgvector stopped at `schema "rag" already exists` | The restore was run without the runbook's `--clean --if-exists`, and the database's init script creates the schema. The [runbook](../../RUNBOOK.md#back-up-and-restore-the-vector-database) now explains the flag and adds the chunk fingerprint check |
@@ -99,7 +99,7 @@ The run sent 70 requests: 57 complete, 4 at the length limit, and 9 refused with
 
 **Request flood.** 15 requests in flight for 2 minutes, above what two replicas admit, sent 158 requests: 42 complete and 116 refused with 429, each in about 0.1 s. rag-api's admission counter recorded 121 refusals in the same window, which also covers 5 from the end of the scale-up run. Both rag-api Pods stayed at 55 MiB throughout.
 
-**Scaling metric lost.** [#52](https://github.com/Josephdara/gke-platform/pull/52) scaled the custom metrics adapter to zero with the HPA fixed at 2. The HPA reported `ScalingActive=False` with `FailedGetPodsMetric` and held 2 replicas, and the `scaling-metric-missing` alert's query returned its "HPA cannot read the metric" series.
+**Scaling metric lost.** [#52](https://github.com/Josephdara/gke-platform/pull/52) scaled the custom metrics adapter to zero with the HPA fixed at 2. The HPA reported `ScalingActive=False` with `FailedGetPodsMetric`, and the `scaling-metric-missing` alert's query returned its "HPA cannot read the metric" series.
 
 **Cooldown.** When [#53](https://github.com/Josephdara/gke-platform/pull/53) restored the adapter, the HPA scaled from 2 to 1 within 12 seconds of reading the metric again (15:35:40 to 15:35:51; Pod gone 15:36:03). Its 5-minute scale-down window only holds recommendations it could compute, and it had none while the metric was missing.
 

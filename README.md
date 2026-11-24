@@ -14,21 +14,33 @@ flowchart LR
   publish -->|image by digest| registry[(Artifact Registry)]
   publish -->|scan and SBOM| evidence[(Evidence bucket)]
   subgraph gke [GKE lab cluster]
-    argo[Argo CD] -->|syncs| staging[staging namespace]
+    subgraph inference [staging-inference namespace]
+      llm[llm-cpu on the tainted inference pool]
+      rag[embeddings, pgvector, ingest on the general pool]
+    end
+    argo[Argo CD] -->|syncs| staging[staging namespace: API and rag-api]
+    argo -->|syncs| inference
     kyverno[Kyverno] -.->|admits or denies| staging
+    kyverno -.->|admits or denies| inference
     collectors[Prometheus collectors] -->|scrape the metrics port| staging
+    adapter[Custom metrics adapter] -->|queue metrics| hpa[HPA] -->|replicas| llm
+    collectors -->|scrape| inference
+    staging -->|retrieval and generation| inference
   end
   repo -->|polls main| argo
-  mirror[(staging-mirror)] -->|controller images| argo
-  registry -->|service image| staging
+  mirror[(staging-mirror)] -->|controller and model server images| argo
+  registry -->|service images| staging
   secrets[(Secret Manager)] -->|CSI mount| staging
+  models[(Models bucket)] -.->|Workload Identity| llm
+  staging -->|Private Service Connect| armor[Model Armor]
   client([Client]) -->|HTTPS| gateway[Gateway load balancer] --> staging
   collectors --> monitoring[Cloud Monitoring]
   monitoring -->|alerts| email([Email])
+  monitoring -->|queue metrics| adapter
   terraform[Terraform] -.->|creates| gke
 ```
 
-A release is a pull request that changes one image digest in `values-staging.yaml`. Argo CD applies it, Kyverno admits only workloads that meet the platform's rules, and a revert brings back the previous digest without a rebuild.
+A release is a pull request that changes one image digest in `values-staging.yaml`. Argo CD applies it, Kyverno admits only workloads that meet the platform's rules, and a revert brings back the previous digest without a rebuild. The AI inference workload runs in its own namespace: rag-api in `staging` calls the model servers and pgvector in `staging-inference`, llm-cpu scales on its queue metrics through the custom metrics adapter, and Model Armor screens traffic through a private endpoint.
 
 ## Where to start
 
@@ -109,7 +121,7 @@ What works today:
 - **Acceptance:** at 20 requests per second through the Gateway, 99.78% of requests succeeded, with a p95 of 56 ms at the client. At 150 requests per second, the autoscaler went from 2 to 3 replicas as soon as CPU passed its 70% target. A Pod failure and a node drain under load each kept success above 99%, at 99.22% and 99.56%; see the [evidence report](platform/evidence/2026-10-07-acceptance.md).
 - **Inference:** a dedicated `staging-inference` namespace and CPU node pool that scales from zero. A model-server chart runs llama.cpp with Qwen2.5-1.5B-Instruct and Text Embeddings Inference with bge-small-en-v1.5, each downloading and checksum-verifying its model before it starts, and two admission policies require model provenance and server limits. A model server is ready about 105 seconds after its Pod is created, including the new node; see the [evidence report](platform/evidence/2026-11-19-inference-foundation.md).
 - **Inference workload:** a retrieval-augmented assistant runs on the platform as its AI workload: rag-api behind the shared Gateway at `https://assistant.staging.gke.josephdara.com/`, pgvector as a StatefulSet, a suspended ingest CronJob, and the two model servers. Releases and Git-revert rollbacks under streaming load kept every stream, at about 4 minutes from merge to healthy, and the first evaluation found a correct source for 20 of 20 answerable questions; see the [evidence report](platform/evidence/2026-11-22-cpu-serving.md).
-- **Scaling and reliability:** llm-cpu scales on queued and running requests per Pod through the custom metrics adapter; a second replica was ready 39 seconds after load rose, and overload is refused with 429 at about 0.1 seconds with flat memory. Pod deletion, a node drain, and a forced kill under load dropped no requests; losing the scaling metric froze replicas instead of scaling down; a model revision with a wrong checksum was refused at download and reverted through Git; and the vector database was deleted and restored with identical chunks; see the [evidence report](platform/evidence/2026-11-24-cpu-scaling-and-reliability.md).
+- **Scaling and reliability:** llm-cpu scales on queued and running requests per Pod through the custom metrics adapter; a second replica was ready 39 seconds after load rose, and overload is refused with 429 at about 0.1 seconds with flat memory. Pod deletion and a node drain under load completed without request errors, and a forced kill ended the partial answer with an explicit `stalled` state; with the HPA fixed at 2 replicas, losing the scaling metric surfaced as `ScalingActive=False` and matched the scaling alert; a model revision with a wrong checksum was refused at download and reverted through Git; and the vector database was deleted and restored with identical chunks; see the [evidence report](platform/evidence/2026-11-24-cpu-scaling-and-reliability.md).
 - **Model Armor:** the workload's questions, retrieved passages, and answers are screened by Model Armor over a private path: a Private Service Connect endpoint, a private DNS zone, one egress rule, and Workload Identity with `roles/modelarmor.user`. It adds about 0.25 seconds to the first token, and in blocking mode it dropped the evaluation's injected passage before the model saw it.
 - **Validation:** every pull request runs the app tests, the image scan, chart renders against the Kubernetes schemas, the policy fixtures, and the Terraform checks. `platform/tests/live-checks.sh` repeats the non-disruptive cluster checks in any session, and the [evidence index](platform/evidence/README.md) lists every session report.
 
