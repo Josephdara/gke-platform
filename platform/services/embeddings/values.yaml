@@ -62,8 +62,7 @@ startup:
 
 replicas: 1
 
+# rag-api is removed to test it without retrieval; restored afterward.
 callers:
-  - namespace: staging
-    service: rag-api
   - namespace: staging-inference
     service: ingest
