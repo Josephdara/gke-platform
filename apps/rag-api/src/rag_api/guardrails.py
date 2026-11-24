@@ -1,11 +1,12 @@
 """Model Armor screening for questions, retrieved passages, and answers.
 
 Each check returns a verdict and never raises: when Model Armor cannot be reached, the verdict says
-the text was not checked, and the request carries on unscreened. Only filter names are recorded,
-never the screened text.
+the text was not checked, the request carries on unscreened, and the reason is logged as
+guardrail_unavailable. Only filter names and error types are recorded, never the screened text.
 """
 
 from dataclasses import dataclass, field
+import logging
 import re
 import time
 
@@ -64,13 +65,14 @@ def matched_filters(result: dict) -> list[str]:
 
 
 class ModelArmor:
-    def __init__(self, client: httpx.AsyncClient, template: str, token):
+    def __init__(self, client: httpx.AsyncClient, template: str, token, logger: logging.Logger | None = None):
         location = TEMPLATE.fullmatch(template)
         if not location:
             raise ValueError("template must be projects/PROJECT/locations/LOCATION/templates/TEMPLATE")
         self.client = client
         self.url = f"https://modelarmor.{location.group(1)}.rep.googleapis.com/v1/{template}"
         self.token = token
+        self.logger = logger or logging.getLogger(__name__)
 
     async def screen_prompt(self, text: str) -> Verdict:
         return await self._screen("sanitizeUserPrompt", {"userPromptData": {"text": text}})
@@ -84,7 +86,10 @@ class ModelArmor:
                                               headers={"Authorization": f"Bearer {await self.token()}"})
             response.raise_for_status()
             result = response.json()["sanitizationResult"]
-        except (httpx.HTTPError, KeyError, ValueError):
+        except (httpx.HTTPError, KeyError, ValueError) as error:
+            status = error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None
+            self.logger.warning("guardrail_unavailable", extra={
+                "method": method, "error_type": type(error).__name__, "status": status})
             return UNCHECKED
         return Verdict(checked=True, flagged=result.get("filterMatchState") == "MATCH_FOUND",
                        filters=matched_filters(result))

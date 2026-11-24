@@ -146,7 +146,8 @@ resource "google_container_node_pool" "infer_cpu_pool" {
 
   autoscaling {
     min_node_count = var.inference_min_nodes
-    max_node_count = 2
+    # Two serving replicas plus one surge Pod during a model release.
+    max_node_count = 3
   }
 
   management {

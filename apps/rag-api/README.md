@@ -95,7 +95,7 @@ With `MODEL_ARMOR_MODE` set to `inspect` or `block`, rag-api screens three thing
 | Each retrieved passage | After retrieval, all at once | A flagged passage is dropped before the prompt is built, which keeps instructions planted in a document away from the model |
 | Answer | After the last token, before the `done` event | The answer was already streamed; `done` carries `policy: {"withheld": true, "filters": [...]}`, the interface replaces the text with a notice, and the saved answer is the notice |
 
-In `inspect` mode nothing changes for the user: every check is recorded and nothing is blocked. If Model Armor cannot be reached, the request carries on unscreened and the check counts as `unavailable`. rag-api authenticates as its Pod's Workload Identity, through the GKE metadata server. Metrics `rag_guardrail_checks_total{point, result}` and `rag_guardrail_seconds{point}` record every check; a flagged check is logged with the names of the filters that matched, never the text.
+In `inspect` mode nothing changes for the user: every check is recorded and nothing is blocked. If Model Armor cannot be reached, the request carries on unscreened, the check counts as `unavailable`, and rag-api logs `guardrail_unavailable` with the API method, error type, and HTTP status. rag-api authenticates as its Pod's Workload Identity, through the GKE metadata server. Metrics `rag_guardrail_checks_total{point, result}` and `rag_guardrail_seconds{point}` record every check; a flagged check is logged with the names of the filters that matched, never the text.
 
 ## Running it locally
 

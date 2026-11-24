@@ -63,4 +63,11 @@ resource "google_monitoring_dashboard" "inference" {
       }]
     }
   })
+
+  # Cloud Monitoring stores the dashboard with fields it adds itself (targetAxis, etag, name), so
+  # every plan would show an update. To change the panels, apply with
+  # -replace='module.alerts[0].google_monitoring_dashboard.inference[0]'.
+  lifecycle {
+    ignore_changes = [dashboard_json]
+  }
 }

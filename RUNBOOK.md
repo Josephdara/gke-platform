@@ -559,19 +559,14 @@ kubectl --context "$CONTEXT" -n argocd delete applications.argoproj.io $ENVIRONM
 kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference wait --for=delete pvc --all --timeout=300s
 ```
 
-**2. Delete the HTTPRoute and Gateway, and wait for GKE to remove the load balancer.** The loop waits until the project has no forwarding rules, target HTTPS proxies, URL maps, backend services, health checks, or network endpoint groups, so use it in a project that hosts only this platform. GKE creates a network endpoint group for the Service behind the Gateway; one left behind blocks the network's deletion later:
+**2. Delete the HTTPRoute and Gateway, and wait for GKE to remove the load balancer.** The loop waits until the project has no forwarding rules, target HTTPS proxies, URL maps, backend services, health checks, or network endpoint groups, so use it in a project that hosts only this platform. It skips the forwarding rule of Model Armor's Private Service Connect endpoint (`rep-autogen-fr-…`), which Terraform removes in the next step. GKE creates a network endpoint group for the Service behind the Gateway; one left behind blocks the network's deletion later:
 
 ```bash
 kubectl --context "$CONTEXT" -n $ENVIRONMENT delete httproute,gateway --all
-until [ -z "$(for r in forwarding-rules target-https-proxies url-maps backend-services health-checks network-endpoint-groups; do gcloud compute $r list --project="$PROJECT_ID" --format='value(name)'; done)" ]; do sleep 20; done; date -u
+until [ -z "$(for r in forwarding-rules target-https-proxies url-maps backend-services health-checks network-endpoint-groups; do gcloud compute $r list --project="$PROJECT_ID" --filter='-name~^rep-autogen-fr-' --format='value(name)'; done)" ]; do sleep 20; done; date -u
 ```
 
-If the loop still waits after 10 minutes and only network endpoint groups remain, delete them by name:
-
-```bash
-gcloud compute network-endpoint-groups list --project="$PROJECT_ID" --format="value(name,zone.basename())"
-gcloud compute network-endpoint-groups delete NEG_NAME --zone="$ZONE" --project="$PROJECT_ID" --quiet
-```
+If the loop still waits after 10 minutes and only network endpoint groups remain, stop it and go on to step 3. Delete leftover groups only after the cluster is gone: while it runs, GKE recreates any group you delete.
 
 **3. Remove the lab.** Expect 15 resources to destroy, all of them lab resources, or 26 after an inference session:
 
@@ -584,6 +579,13 @@ Review the plan, then apply it. The apply takes about 12 minutes:
 
 ```bash
 terraform -chdir=infra/env/staging apply ../../private/lab-off.tfplan
+```
+
+If the apply fails to delete `staging-vpc` because network endpoint groups still use it, the cluster is gone by then, so delete the groups by name, then plan and apply again. Expect 1 resource to destroy:
+
+```bash
+gcloud compute network-endpoint-groups list --project="$PROJECT_ID" --format="value(name,zone.basename())"
+gcloud compute network-endpoint-groups delete NEG_NAME --zone="$ZONE" --project="$PROJECT_ID" --quiet
 ```
 
 **4. Check that nothing billable is left:**
@@ -650,7 +652,7 @@ The `staging-pr-validate` check runs the API tests, builds and scans the image, 
 2. In `platform/services/platform-verification-api/values-staging.yaml`, set `image.repository` to your image repository, `image.digest` to the image's digest, and `releaseVersion` to `"sha-<short commit>"`. Keep each release in its own pull request.
 3. Run `platform/tests/validate-chart.sh`, then open and merge the pull request.
 
-Argo CD checks Git every 3 minutes and rolls out the new image without dropping below the ready replica count. The target is healthy within 10 minutes of the merge; in the reference environment, a release took 1 minute 37 seconds. During a lab session, run the live checks afterwards: they confirm the running image matches Git.
+Argo CD checks Git every 3 minutes and rolls out the new image without dropping below the ready replica count. A model server release, a new image or model revision in `llm-cpu` or `embeddings` values, also starts its new Pod before stopping an old one, on a spare node if needed; the inference pool's third node is there for it. If the new Pod never becomes ready, for example because its model file fails the SHA-256 check, the running replicas keep serving until you revert the pull request. The target is healthy within 10 minutes of the merge; in the reference environment, a release took 1 minute 37 seconds. During a lab session, run the live checks afterwards: they confirm the running image matches Git.
 
 ### Roll back a release
 
@@ -700,6 +702,8 @@ terraform -chdir=infra/env/staging show ../../private/change.tfplan
 ```bash
 terraform -chdir=infra/env/staging apply ../../private/change.tfplan
 ```
+
+Terraform ignores differences in the inference dashboard, because Cloud Monitoring adds fields of its own. To change its panels, add `-replace='module.alerts[0].google_monitoring_dashboard.inference[0]'` to the plan.
 
 Changes to persistent resources take effect when you apply. Changes to lab resources, such as cluster settings or alert policies, take effect when you apply during a session, or when the next session creates the lab. After an apply during a session, run the live checks.
 
@@ -888,7 +892,13 @@ Restore into a freshly initialized pgvector as the superuser, from inside its Po
 kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference exec -i $ENVIRONMENT-pgvector-0 -- pg_restore -U postgres -d rag --clean --if-exists < rag.dump
 ```
 
-Then compare the document and chunk counts with the source. The dump contains the corpus and any conversations, so keep it private and delete it when you are done.
+`--clean --if-exists` drops the empty `rag` schema that a fresh pgvector's init script creates; without it, the restore stops at `schema "rag" already exists`. Before the export and after the restore, compare the chunk count and a fingerprint of the chunk IDs; both lines must match:
+
+```bash
+kubectl --context "$CONTEXT" -n $ENVIRONMENT-inference exec $ENVIRONMENT-pgvector-0 -- psql -U postgres -d rag -Atc "select count(*), md5(string_agg(id::text, ',' order by id)) from rag.chunks"
+```
+
+The dump contains the corpus and any conversations, so keep it private and delete it when you are done. In the reference environment, a 2.8 MB export took 3 seconds, Argo CD recreated a deleted StatefulSet on a new volume in 36 seconds, and the restore took 3 seconds with a matching fingerprint.
 
 ### Rotate a secret
 

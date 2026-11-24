@@ -40,7 +40,7 @@ def create_app(
         if app.state.conversations is None:
             app.state.conversations = build_conversations(settings)
         if app.state.guardrail is None:
-            app.state.guardrail = build_guardrail(settings, clients)
+            app.state.guardrail = build_guardrail(settings, clients, logger)
         app.state.ready = True
         logger.info("application_started")
         try:
@@ -87,13 +87,13 @@ def build_conversations(settings: Settings) -> ConversationStore:
     return PgConversationStore(database(settings)) if settings.database_host else MemoryConversationStore()
 
 
-def build_guardrail(settings: Settings, clients: list):
+def build_guardrail(settings: Settings, clients: list, logger: logging.Logger | None = None):
     if settings.model_armor_mode == "off":
         return NoGuardrail()
     clients.append(httpx.AsyncClient(timeout=3))
     token = MetadataToken(clients[-1])
     clients.append(httpx.AsyncClient(timeout=5))
-    return ModelArmor(clients[-1], settings.model_armor_template, token)
+    return ModelArmor(clients[-1], settings.model_armor_template, token, logger)
 
 
 def build_retriever(settings: Settings, clients: list) -> Retriever:

@@ -3,7 +3,7 @@ name: model-server
 description: "Platform chart that deploys one model server (llama.cpp or Text Embeddings Inference) with a verified model download, inference bounds, and queue-based autoscaling."
 type: application
 
-version: 0.1.1
+version: 0.1.2
 maintainers:
   - name: "josephdara"
     url: "https://josephdara.com"
