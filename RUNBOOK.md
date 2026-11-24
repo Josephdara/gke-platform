@@ -409,7 +409,7 @@ terraform -chdir=infra/env/staging plan -var=lab_enabled=true -out=../../private
 terraform -chdir=infra/env/staging show ../../private/lab-on.tfplan
 ```
 
-For an inference session, plan with the inference flag instead. Expect 23 resources to add: the same 15, plus `staging-infer-cpu-pool`, six inference alert policies, and the inference dashboard:
+For an inference session, plan with the inference flag instead. Expect 26 resources to add: the same 15, plus `staging-infer-cpu-pool`, six inference alert policies, the inference dashboard, and Model Armor's Private Service Connect endpoint with its private DNS zone and record:
 
 ```bash
 terraform -chdir=infra/env/staging plan -var=lab_enabled=true -var=inference_cpu_enabled=true -out=../../private/lab-on.tfplan
@@ -573,7 +573,7 @@ gcloud compute network-endpoint-groups list --project="$PROJECT_ID" --format="va
 gcloud compute network-endpoint-groups delete NEG_NAME --zone="$ZONE" --project="$PROJECT_ID" --quiet
 ```
 
-**3. Remove the lab.** Expect 15 resources to destroy, all of them lab resources, or 23 after an inference session:
+**3. Remove the lab.** Expect 15 resources to destroy, all of them lab resources, or 26 after an inference session:
 
 ```bash
 terraform -chdir=infra/env/staging plan -var=lab_enabled=false -out=../../private/lab-off.tfplan

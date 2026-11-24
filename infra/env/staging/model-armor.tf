@@ -50,3 +50,50 @@ output "model_armor_template" {
   description = "The template rag-api's MODEL_ARMOR_TEMPLATE names."
   value       = google_model_armor_template.assistant.id
 }
+
+# Model Armor answers only on its regional hostname, which private.googleapis.com does not serve,
+# so a Private Service Connect endpoint carries the calls inside the VPC. A private zone for that one
+# hostname points at the endpoint; every other Google API name still uses the googleapis zone.
+# NetworkPolicy allows rag-api to reach this address, so it stays fixed.
+locals {
+  model_armor_host     = "modelarmor.${var.region}.rep.googleapis.com"
+  model_armor_address  = "10.40.0.250"
+  model_armor_endpoint = var.lab_enabled && var.inference_cpu_enabled
+}
+
+resource "google_network_connectivity_regional_endpoint" "model_armor" {
+  count             = local.model_armor_endpoint ? 1 : 0
+  project           = var.project_id
+  location          = var.region
+  name              = "${var.environment}-model-armor"
+  target_google_api = local.model_armor_host
+  access_type       = "REGIONAL"
+  network           = module.network[0].network_id
+  subnetwork        = module.network[0].subnetwork_id
+  address           = local.model_armor_address
+}
+
+resource "google_dns_managed_zone" "model_armor" {
+  count       = local.model_armor_endpoint ? 1 : 0
+  project     = var.project_id
+  name        = "${var.environment}-model-armor"
+  dns_name    = "${local.model_armor_host}."
+  description = "Resolves Model Armor's regional hostname to its Private Service Connect endpoint"
+  visibility  = "private"
+
+  private_visibility_config {
+    networks {
+      network_url = module.network[0].network_id
+    }
+  }
+}
+
+resource "google_dns_record_set" "model_armor" {
+  count        = local.model_armor_endpoint ? 1 : 0
+  project      = var.project_id
+  managed_zone = google_dns_managed_zone.model_armor[0].name
+  name         = google_dns_managed_zone.model_armor[0].dns_name
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_network_connectivity_regional_endpoint.model_armor[0].address]
+}
