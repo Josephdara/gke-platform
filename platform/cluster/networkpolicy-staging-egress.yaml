@@ -38,11 +38,14 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    # Model Armor, through Private Google Access, and Workload Identity tokens from the GKE
-    # metadata server.
+    # Google APIs through Private Google Access, Model Armor through its Private Service Connect
+    # endpoint (fixed in infra/env/staging/model-armor.tf), and Workload Identity tokens from the
+    # GKE metadata server.
     - to:
         - ipBlock:
             cidr: 199.36.153.8/30
+        - ipBlock:
+            cidr: 10.40.0.250/32
       ports:
         - protocol: TCP
           port: 443

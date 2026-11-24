@@ -44,7 +44,7 @@ startup:
 # Scales on queued requests per Pod, and holds two replicas while both have busy slots.
 autoscaling:
   enabled: true
-  min: 1
+  min: 2
   max: 2
   metrics:
     - name: "prometheus.googleapis.com|llamacpp:requests_deferred|gauge"

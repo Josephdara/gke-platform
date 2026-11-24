@@ -11,7 +11,8 @@ locals {
     "dns.googleapis.com",
     "certificatemanager.googleapis.com",
     "modelarmor.googleapis.com",
-    "aiplatform.googleapis.com"
+    "aiplatform.googleapis.com",
+    "networkconnectivity.googleapis.com"
   ])
 }
 
