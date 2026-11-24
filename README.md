@@ -7,7 +7,7 @@ It runs in my personal GCP project `gke-build-proj` as a temporary staging envir
 ## How it fits together
 
 ```mermaid
-flowchart LR
+flowchart TB
   dev([Developer]) -->|pull request| repo[GitHub repository]
   repo -->|checks on every pull request| validate[Cloud Build validate]
   repo -->|merge that changes the API| publish[Cloud Build publish]
