@@ -43,7 +43,7 @@ Persistent resources stay between sessions and are protected against deletion. L
 | Outbound access | `staging-router` and `staging-nat` | Lab |
 | Google APIs DNS | Private zone `staging-googleapis`: `*.googleapis.com` resolves to `private.googleapis.com` (199.36.153.8/30) inside `staging-vpc` | Lab |
 | Cluster | `staging-super-cluster`: zonal in us-east4-a, Regular channel from 1.36, private nodes, DNS endpoint only, NodeLocal DNSCache, managed Prometheus collection with Deployment, HPA, Pod, and StatefulSet kube state metrics, no RBAC bindings to `system:authenticated` or `system:unauthenticated` | Lab |
-| Node pools | `staging-super-pool`: 2 to 4 e2-standard-2 nodes, 30 GB pd-balanced disks. `staging-infer-cpu-pool`, only with `inference_cpu_enabled=true`: 0 to 2 n2d-standard-4 nodes, 50 GB pd-balanced disks, taint and label `workload-class=llm-cpu`, upgrades one node at a time without a surge node | Lab |
+| Node pools | `staging-super-pool`: 2 to 4 e2-standard-2 nodes, 30 GB pd-balanced disks. `staging-infer-cpu-pool`, only with `inference_cpu_enabled=true`: 0 to 3 n2d-standard-4 nodes (two serving replicas and a surge Pod during a model release), 50 GB pd-balanced disks, taint and label `workload-class=llm-cpu`, upgrades one node at a time without a surge node | Lab |
 | Gateway address | Global static IP `staging-gateway-ip`, and one A record per hostname, `api.staging.gke.josephdara.com` and `assistant.staging.gke.josephdara.com`, pointing to it | Lab |
 | Alert policies | `staging-no-ready-replicas` (Deployments in the `staging` namespace only), `staging-error-rate`, and `staging-latency`, which email the `staging-alerts` channel; see [Alert email channel](#alert-email-channel) | Lab |
 

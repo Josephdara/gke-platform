@@ -14,12 +14,14 @@ spec:
   selector:
     matchLabels:
       {{- include "model-server.selectorLabels" . | nindent 6 }}
-  # A release never asks for a node or GPU beyond the pool's cap.
+  # A release starts the new Pod and waits for it to be ready before it stops an old one, so a
+  # revision that never becomes ready leaves the running replicas serving. The new Pod may need
+  # one node beyond the HPA's maximum; the inference pool's node cap leaves room for it.
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:

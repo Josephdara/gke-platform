@@ -4,6 +4,7 @@ Reports from [lab sessions](../../infra/README.md#sessions), newest first. Each 
 
 | Date | Report | Covers |
 | --- | --- | --- |
+| 2026-11-24 | [CPU scaling and reliability](2026-11-24-cpu-scaling-and-reliability.md) | Model Armor reached privately through Private Service Connect, fixed-replica baselines, warm scale-up and cooldown, a request flood refused with 429, Pod, node, scaling-metric, and retrieval failures, a wrong-checksum model revision reverted through Git, a vector database delete and restore, and the evaluation in blocking mode |
 | 2026-11-22 | [CPU serving](2026-11-22-cpu-serving.md) | The assistant in staging: the full corpus loaded, a rag-api release, Git-revert rollback, and re-release in about 4 minutes from merge to healthy with no stream cut under load, graceful draining of in-flight answers, and the first scored evaluation with retrieval 20 of 20 and repeatable answers |
 | 2026-11-19 | [Inference foundation](2026-11-19-inference-foundation.md) | The CPU inference pool scaling from zero, llama.cpp and TEI model servers with verified downloads, cold-start timings, inference admission policies, allowed and refused callers, Workload Identity for the models bucket, the scaling metric, service time, and three problems solved during the session |
 | 2026-10-07 | [Observability and acceptance tests](2026-10-07-acceptance.md) | Release D's evidence, managed Prometheus scraping, alert delivery, steady load, autoscaling, Pod failure, and node drain |

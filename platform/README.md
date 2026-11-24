@@ -332,7 +332,7 @@ To back up or restore it, see the [runbook](../RUNBOOK.md#back-up-and-restore-th
 
 ## Model-server chart
 
-[`charts/model-server/`](charts/model-server/) deploys one model server into `<environment>-inference`: llama.cpp for the chat model, or Text Embeddings Inference (TEI) for the embedding model. It is separate from the service chart, because a model server needs a model download, a long startup, inference limits, and a rollout that never asks for a second node. Version 0.1.1 includes the fixes from its first run in the staging cluster; see the [evidence report](evidence/2026-11-19-inference-foundation.md).
+[`charts/model-server/`](charts/model-server/) deploys one model server into `<environment>-inference`: llama.cpp for the chat model, or Text Embeddings Inference (TEI) for the embedding model. It is separate from the service chart, because a model server needs a model download, a long startup, inference limits, and a rollout that keeps the running replicas serving until the new Pod is ready. Version 0.1.1 includes the fixes from its first run in the staging cluster; see the [evidence report](evidence/2026-11-19-inference-foundation.md). Version 0.1.2 starts the new Pod before it stops an old one, so a model revision that never becomes ready cannot take the server down; see [CPU scaling and reliability](evidence/2026-11-24-cpu-scaling-and-reliability.md#problems-solved-along-the-way).
 
 What it renders, and why:
 

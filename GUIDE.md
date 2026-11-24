@@ -19,6 +19,7 @@ The [README](README.md) describes the platform and its results, the [runbook](RU
 - [HTTPS: DNS, certificate, and Gateway](#https-dns-certificate-and-gateway)
 - [Observability and alerts](#observability-and-alerts)
 - [Validation and evidence](#validation-and-evidence)
+- [Model Armor screening in the VPC](#model-armor-screening-in-the-vpc)
 - [Costs](#costs)
 - [Results](#results)
 
@@ -701,6 +702,33 @@ Each report in [`platform/evidence/`](platform/evidence/README.md) records the r
 - [conftest](https://www.conftest.dev/) tests rendered manifests against Rego policies in CI.
 - [Chaos Mesh](https://chaos-mesh.org/) automates failure tests like the Pod failure and drain done by hand here.
 
+## Model Armor screening in the VPC
+
+### What it does
+
+Model Armor screens the inference workload's traffic for prompt injection, jailbreaks, malicious URLs, sensitive data, and harmful content. rag-api calls it on each question, each retrieved passage, and each finished answer, and the platform decides by configuration whether a match is only recorded or also blocked.
+
+### How it is configured
+
+- **Template**: Terraform creates `staging-assistant` in `us-east4`, the same region as the cluster. It persists between sessions, and it logs every screening operation to Cloud Logging so each violation can be reviewed; staging screens only test traffic.
+- **Identity**: rag-api's Kubernetes service account calls the API as its Workload Identity principal, which holds `roles/modelarmor.user` and nothing else for Model Armor. No key is stored anywhere.
+- **Private path**: a template only answers on its regional hostname, `modelarmor.us-east4.rep.googleapis.com`. The lab's private zone for `googleapis.com` sends Google API names to `private.googleapis.com`, which does not serve regional hostnames, so each inference lab also creates a regional Private Service Connect endpoint at the fixed address `10.40.0.250` and a private DNS zone for that one hostname. Cloud DNS answers from the most specific zone, so every other Google API keeps its existing path.
+- **Egress**: rag-api's NetworkPolicy allows that one address on port 443, next to the Google APIs range and the metadata server.
+- **Mode**: `MODEL_ARMOR_MODE` in rag-api's staging values is `off`, `inspect`, or `block`, and changes by pull request like any release. When Model Armor cannot be reached, requests continue unscreened and rag-api logs `guardrail_unavailable` with the error type, so an outage of the screening service does not become an outage of the workload.
+- **Signals**: rag-api counts checks by point and result, times each check, and logs each match with the filter names; the inference dashboard has panels for both.
+
+### Why
+
+- **Calling from the workload, not the load balancer**: the Gateway's traffic extension for Model Armor does not screen streamed responses and only understands one API format, while the workload sees every passage and the whole answer.
+- **Private Service Connect**: it keeps screening traffic on Google's network from a private cluster with no public egress for rag-api, and the endpoint is a lab resource, so it costs nothing between sessions.
+- **Failing open while testing**: a screening outage should be visible in metrics and logs without taking answers away. Blocking on failure is one setting away for a stricter environment.
+
+### Other options
+
+- [Service Extensions](https://cloud.google.com/service-extensions/docs/overview) can call Model Armor from the load balancer instead of the workload.
+- [Access regional Google APIs through endpoints](https://cloud.google.com/vpc/docs/access-regional-google-apis-endpoints) describes the endpoint used here and its global-access option.
+- [VPC Service Controls](https://cloud.google.com/vpc-service-controls/docs/overview) can add a perimeter around Model Armor and the other Google APIs the platform calls.
+
 ## Costs
 
 ### What it does
@@ -743,5 +771,8 @@ Through 2026-10-06, the billing export showed $6.92 before credits, $5.80 of it 
 | Inference foundation | Model servers scale from zero inference nodes and are ready in about 105 seconds with verified model downloads; inference admission policies, Workload Identity, and the scaling metric pass; [inference foundation report](platform/evidence/2026-11-19-inference-foundation.md) |
 | Assistant release and rollback | 177 and 203 streamed requests with no stream cut, about 4 minutes from merge to healthy, and in-flight answers drained from terminating Pods; [CPU serving report](platform/evidence/2026-11-22-cpu-serving.md) |
 | Assistant evaluation | A correct source for 20 of 20 answerable questions, no invented citations, and identical answers across repeated runs |
+| Inference scaling | A second llm-cpu replica ready 39 seconds after load rose; a 158-request flood refused cleanly with 429 and flat memory; replicas held when the scaling metric was lost; [CPU scaling and reliability report](platform/evidence/2026-11-24-cpu-scaling-and-reliability.md) |
+| Inference failure recovery | Pod deletion, node drain, and a forced kill under load handled without dropped requests; a model revision with a wrong checksum refused and reverted by Git; the vector database deleted and restored with identical chunks |
+| Model Armor | Reachable privately through Private Service Connect, about 0.25 seconds added to the first token, and the injected passage in the evaluation dropped before the model saw it |
 
-The platform runs as one zonal staging environment that exists only during lab sessions. Node upgrades, load balancer error logging, replica spreading, a second service, and answer quality on the CPU model are the areas measured but not yet addressed; each report links its raw results.
+The platform runs as one zonal staging environment that exists only during lab sessions. Node upgrades, load balancer error logging, replica spreading, a second service, answer quality on the CPU model, and the surge rollout of model-server chart 0.1.2 are the areas measured or configured but not yet addressed in a session; each report links its raw results.
