@@ -14,7 +14,7 @@ config:
   # GKE's external Application Load Balancer appends the client and its own address.
   FORWARDED_HOPS: "2"
   # off, inspect, or block. The template is Terraform's model_armor_template output.
-  MODEL_ARMOR_MODE: inspect
+  MODEL_ARMOR_MODE: block
   MODEL_ARMOR_TEMPLATE: projects/gke-build-proj/locations/us-east4/templates/staging-assistant
 
 secrets:
